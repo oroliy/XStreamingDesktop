@@ -83,6 +83,41 @@ func TestExchangePollingCancellation(t *testing.T) {
 	}
 }
 
+func TestChatRenegotiationUsesChatConfiguration(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v5/sessions/home/abc/sdp" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Method == http.MethodPost {
+			var body struct {
+				SDP           string         `json:"sdp"`
+				MessageType   string         `json:"messageType"`
+				Configuration map[string]any `json:"configuration"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			if body.SDP != "chat offer" || body.MessageType != "offer" || len(body.Configuration) != 1 || body.Configuration["isMediaStreamsChatRenegotiation"] != true {
+				t.Errorf("unexpected chat offer: %+v", body)
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		fmt.Fprint(w, `{"exchangeResponse":"{\"sdp\":\"chat answer\"}"}`)
+	}))
+	defer server.Close()
+	client, err := NewClient(server.URL, "token", "home", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer, err := client.ExchangeSDP(context.Background(), "abc", "chat offer", true)
+	if err != nil || string(answer) != `{"sdp":"chat answer"}` {
+		t.Fatalf("answer=%s error=%v", answer, err)
+	}
+}
+
 func TestSignalingPollRetriesWithoutRepeatingPost(t *testing.T) {
 	var posts, polls atomic.Int32
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
