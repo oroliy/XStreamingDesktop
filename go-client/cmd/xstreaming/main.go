@@ -55,7 +55,7 @@ type app struct {
 func (a *app) view(c *ui.Context) {
 	ui.Column(c).Fill().Center().Gap(12).Children(func() {
 		ui.Text(c, "XStreaming").FontSize(32).Bold()
-		ui.Text(c, "Experimental preview — controller and playback support are unverified.")
+		ui.Text(c, a.tr("Experimental preview — controller and playback support are unverified."))
 		if a.frame != nil {
 			ui.Image(c, a.frame).FillWidth().Grow(1).Fit(ui.Contain)
 		}
@@ -64,10 +64,10 @@ func (a *app) view(c *ui.Context) {
 			if a.fullscreen {
 				label = "Exit full screen"
 			}
-			if ui.Button(c.Key("fullscreen"), label).Clicked() && a.win != nil {
+			if ui.Button(c.Key("fullscreen"), a.tr(label)).Clicked() && a.win != nil {
 				a.win.ToggleFullScreen()
 			}
-			if ui.Button(c.Key("stop"), "Stop stream").Clicked() {
+			if ui.Button(c.Key("stop"), a.tr("Stop stream")).Clicked() {
 				if a.fullscreen && a.win != nil {
 					a.win.SetFullScreen(false)
 				}
@@ -81,13 +81,13 @@ func (a *app) view(c *ui.Context) {
 			}
 		}
 		if a.status != "" {
-			ui.Text(c, a.status)
+			ui.Text(c, a.tr(a.status))
 		}
 		if a.code != "" {
-			ui.Text(c, "Visit: "+a.uri)
-			ui.Text(c, "Code: "+a.code).FontSize(24).Bold()
+			ui.Text(c, a.tr("Visit: ")+a.uri)
+			ui.Text(c, a.tr("Code: ")+a.code).FontSize(24).Bold()
 			if verificationURLAllowed(a.uri) {
-				if ui.Button(c.Key("open-verification"), "Open Microsoft sign-in page").Clicked() {
+				if ui.Button(c.Key("open-verification"), a.tr("Open Microsoft sign-in page")).Clicked() {
 					address := a.uri
 					c.OpenURLThen(address, func(err error) {
 						if err != nil && a.uri == address {
@@ -98,7 +98,7 @@ func (a *app) view(c *ui.Context) {
 			}
 		}
 		if a.busy && a.credentials == nil && a.accountCancel != nil && !a.cancelingLogin {
-			if ui.Button(c.Key("cancel-login"), "Cancel sign-in").Clicked() {
+			if ui.Button(c.Key("cancel-login"), a.tr("Cancel sign-in")).Clicked() {
 				a.cancelingLogin = true
 				a.accountCancel()
 				a.code = ""
@@ -111,19 +111,19 @@ func (a *app) view(c *ui.Context) {
 			if a.keyboardEnabled {
 				label = "Disable keyboard controller"
 			}
-			if ui.Button(c.Key("keyboard"), label).Clicked() {
+			if ui.Button(c.Key("keyboard"), a.tr(label)).Clicked() {
 				a.keyboardEnabled = !a.keyboardEnabled
 			}
 			if a.keyboardEnabled {
 				a.keyboard.Set(true, controller.MapKeys(c.KeyDown))
-				ui.Box(c.Key("keyboard-capture")).Focusable().AutoFocus().Label("Keyboard controller").HandleInput(func(ev ui.InputEvent) bool {
+				ui.Box(c.Key("keyboard-capture")).Focusable().AutoFocus().Label(a.tr("Keyboard controller")).HandleInput(func(ev ui.InputEvent) bool {
 					if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEscape {
 						a.keyboardEnabled = false
 						a.keyboard.Set(false, protocol.Gamepad{})
 					}
 					return ev.Kind == ui.InputKeyDown || ev.Kind == ui.InputKeyUp
 				}).Children(func() {
-					ui.Text(c, "WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable")
+					ui.Text(c, a.tr("WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable"))
 				})
 			} else {
 				a.keyboard.Set(false, protocol.Gamepad{})
@@ -131,7 +131,7 @@ func (a *app) view(c *ui.Context) {
 			return
 		}
 		if !a.busy && a.code == "" && a.credentials == nil {
-			if ui.PrimaryButton(c, "Sign in with Microsoft").Clicked() {
+			if ui.PrimaryButton(c, a.tr("Sign in with Microsoft")).Clicked() {
 				a.busy = true
 				a.status = "Requesting sign-in code…"
 				ctx, cancel := context.WithCancel(a.ctx)
@@ -141,7 +141,7 @@ func (a *app) view(c *ui.Context) {
 			}
 		}
 		if a.credentials != nil && !a.busy && a.streamCancel == nil {
-			if ui.Button(c.Key("signout"), "Sign out").Clicked() {
+			if ui.Button(c.Key("signout"), a.tr("Sign out")).Clicked() {
 				a.busy = true
 				a.status = "Signing out…"
 				a.accountCancel()
@@ -165,23 +165,23 @@ func (a *app) view(c *ui.Context) {
 			}
 		}
 		ui.Scroll(c.Key("library")).Grow(1).Width(680).Gap(8).Children(func() {
-			ui.Text(c, "Consoles").Bold()
+			ui.Text(c, a.tr("Consoles")).Bold()
 			if a.credentials != nil && !a.busy && a.streamCancel == nil {
-				if ui.Button(c.Key("refresh-consoles"), "Refresh consoles").Clicked() {
+				if ui.Button(c.Key("refresh-consoles"), a.tr("Refresh consoles")).Clicked() {
 					a.busy = true
 					a.status = "Refreshing consoles…"
 					go a.refreshConsoles(a.accountCtx, a.credentials, a.client)
 				}
 			}
 			for _, console := range a.consoles {
-				ui.Text(c, fmt.Sprintf("%s (%s) — %s", console.Name, console.ConsoleType, console.PowerState))
+				ui.Text(c, fmt.Sprintf("%s (%s) — %s", console.Name, console.ConsoleType, a.tr(console.PowerState)))
 				if !a.busy && a.streamCancel == nil && console.ServerID != "" {
-					if ui.Button(c.Key("wake-"+console.ServerID), "Wake console").Clicked() {
+					if ui.Button(c.Key("wake-"+console.ServerID), a.tr("Wake console")).Clicked() {
 						a.busy = true
 						a.status = "Sending wake request…"
 						go a.wakeConsole(a.accountCtx, a.credentials, console.ServerID)
 					}
-					if ui.Button(c.Key(console.ServerID), "Start stream").Clicked() {
+					if ui.Button(c.Key(console.ServerID), a.tr("Start stream")).Clicked() {
 						ctx, cancel := context.WithCancel(a.ctx)
 						a.streamCancel = cancel
 						a.busy = true
@@ -190,13 +190,21 @@ func (a *app) view(c *ui.Context) {
 					}
 				}
 			}
-			ui.Text(c, "Settings").Bold()
+			ui.Text(c, a.tr("Settings")).Bold()
 			ui.Row(c).Gap(8).Children(func() {
-				ui.Text(c, "Resolution")
+				ui.Text(c, a.tr("Interface language"))
+				if ui.Select(c.Key("ui-language"), &a.prefs.UILanguage, []string{"English", "简体中文"}).Changed() && a.settingsPath != "" {
+					if err := settings.Save(a.settingsPath, a.prefs); err != nil {
+						a.status = "Unable to save settings: " + err.Error()
+					}
+				}
+			})
+			ui.Row(c).Gap(8).Children(func() {
+				ui.Text(c, a.tr("Resolution"))
 				changed := ui.Select(c.Key("resolution"), &a.prefs.Resolution, []string{"720p", "1080p", "1080p HQ"}).Changed()
-				ui.Text(c, "Language")
+				ui.Text(c, a.tr("Language"))
 				changed = ui.Select(c.Key("language"), &a.prefs.Language, []string{"en-US", "zh-TW", "zh-CN", "ja-JP"}).Changed() || changed
-				ui.Text(c, "Market")
+				ui.Text(c, a.tr("Market"))
 				changed = ui.Select(c.Key("market"), &a.prefs.Market, []string{"US", "TW", "JP", "GB"}).Changed() || changed
 				if changed && a.settingsPath != "" {
 					if err := settings.Save(a.settingsPath, a.prefs); err != nil {
@@ -204,30 +212,30 @@ func (a *app) view(c *ui.Context) {
 					}
 				}
 			})
-			if ui.Checkbox(c.Key("prefer-ipv6"), &a.prefs.PreferIPv6, "Prefer IPv6 candidates").Changed() && a.settingsPath != "" {
+			if ui.Checkbox(c.Key("prefer-ipv6"), &a.prefs.PreferIPv6, a.tr("Prefer IPv6 candidates")).Changed() && a.settingsPath != "" {
 				if err := settings.Save(a.settingsPath, a.prefs); err != nil {
 					a.status = "Unable to save settings: " + err.Error()
 				}
 			}
 			ui.Row(c).Gap(8).Children(func() {
-				ui.Text(c, "Starting volume")
-				if ui.Slider(c.Key("volume"), &a.prefs.Volume, 0, 100).Label("Starting volume").Width(180).Changed() && a.settingsPath != "" {
+				ui.Text(c, a.tr("Starting volume"))
+				if ui.Slider(c.Key("volume"), &a.prefs.Volume, 0, 100).Label(a.tr("Starting volume")).Width(180).Changed() && a.settingsPath != "" {
 					if err := settings.Save(a.settingsPath, a.prefs); err != nil {
 						a.status = "Unable to save settings: " + err.Error()
 					}
 				}
 				ui.Text(c, fmt.Sprintf("%.0f%%", a.prefs.Volume))
 			})
-			ui.Text(c, "Cloud games").Bold()
-			ui.TextInput(c.Key("search"), &a.filter).Placeholder("Search games").Label("Search games").Width(320)
+			ui.Text(c, a.tr("Cloud games")).Bold()
+			ui.TextInput(c.Key("search"), &a.filter).Placeholder(a.tr("Search games")).Label(a.tr("Search games")).Width(320)
 			if a.credentials != nil && a.accountCtx != nil && !a.busy && a.streamCancel == nil {
-				if ui.Button(c.Key("reload-cloud"), "Reload cloud catalog").Clicked() {
+				if ui.Button(c.Key("reload-cloud"), a.tr("Reload cloud catalog")).Clicked() {
 					a.cloudStatus = "Loading cloud games…"
 					go a.loadCloud(a.accountCtx, a.credentials, a.prefs)
 				}
 			}
 			if a.cloudStatus != "" {
-				ui.Text(c, a.cloudStatus)
+				ui.Text(c, a.tr(a.cloudStatus))
 			}
 			for index, title := range a.titles {
 				if title.TitleID == "" || !strings.Contains(strings.ToLower(title.Name), strings.ToLower(strings.TrimSpace(a.filter))) {
@@ -235,7 +243,7 @@ func (a *app) view(c *ui.Context) {
 				}
 				ui.Text(c, title.Name)
 				if !a.busy && a.streamCancel == nil && a.cloud != nil {
-					if ui.Button(c.Key(fmt.Sprintf("cloud-%d-%s", index, title.TitleID)), "Play").Clicked() {
+					if ui.Button(c.Key(fmt.Sprintf("cloud-%d-%s", index, title.TitleID)), a.tr("Play")).Clicked() {
 						ctx, cancel := context.WithCancel(a.ctx)
 						a.streamCancel = cancel
 						a.busy = true

@@ -32,3 +32,5 @@ The stream view offers a full-screen toggle. Starting volume is configurable bef
 The console list can send a wake request through Xbox remote management. The console must allow remote management, and an accepted request does not guarantee it has powered on. This flow has not been tested with a real Xbox.
 
 The optional IPv6 preference orders remote ICE candidates for new sessions; IPv4 candidates remain available.
+
+The interface language can be switched between English and Simplified Chinese independently of the game language.

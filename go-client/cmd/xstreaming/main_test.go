@@ -200,3 +200,21 @@ func TestCancelSignIn(t *testing.T) {
 		t.Fatal("new sign-in allowed before cancellation finished")
 	}
 }
+
+func TestChineseInterface(t *testing.T) {
+	prefs := settings.Defaults()
+	prefs.UILanguage = "简体中文"
+	a := &app{prefs: prefs, status: "Connected; waiting for video…"}
+	tt := ui.NewTester(a.view, 1024, 768)
+	for _, text := range []string{"使用微软账号登录", "主机", "设置", "界面语言", "已连接，正在等待视频…"} {
+		if !tt.HasText(text) {
+			t.Fatalf("missing %q in %v", text, tt.Texts())
+		}
+	}
+	if got := a.tr("Stream failed: network"); got != "串流启动失败：network" {
+		t.Fatal(got)
+	}
+	if got := a.tr("Signed in. Found 2 console(s)."); got != "已登录。找到 2 台主机。" {
+		t.Fatal(got)
+	}
+}

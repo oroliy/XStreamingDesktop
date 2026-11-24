@@ -12,6 +12,7 @@ import (
 
 type Settings struct {
 	Resolution string  `json:"resolution"`
+	UILanguage string  `json:"ui_language"`
 	Language   string  `json:"language"`
 	Market     string  `json:"market"`
 	Volume     float64 `json:"volume"`
@@ -19,9 +20,12 @@ type Settings struct {
 }
 
 func Defaults() Settings {
-	return Settings{Resolution: "1080p", Language: "en-US", Market: "US", Volume: 100}
+	return Settings{Resolution: "1080p", UILanguage: "English", Language: "en-US", Market: "US", Volume: 100}
 }
 func (s Settings) Validate() error {
+	if s.UILanguage != "English" && s.UILanguage != "简体中文" {
+		return errors.New("invalid interface language")
+	}
 	if math.IsNaN(s.Volume) || math.IsInf(s.Volume, 0) || s.Volume < 0 || s.Volume > 100 {
 		return errors.New("invalid volume")
 	}

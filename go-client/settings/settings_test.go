@@ -33,7 +33,7 @@ func TestLegacySettingsGainDefaultVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := Load(p)
-	if err != nil || got.Volume != 100 || got.ResolutionCode() != 720 {
+	if err != nil || got.Volume != 100 || got.ResolutionCode() != 720 || got.UILanguage != "English" {
 		t.Fatal(got, err)
 	}
 	got.Volume = 101

@@ -1,0 +1,52 @@
+package main
+
+import "strings"
+
+var chinese = map[string]string{
+	"Experimental preview — controller and playback support are unverified.": "实验预览版：手柄和播放功能尚未经实机验证。",
+	"Full screen": "全屏", "Exit full screen": "退出全屏", "Stop stream": "停止串流", "Cancel sign-in": "取消登录",
+	"Open Microsoft sign-in page": "打开微软登录页面", "Enable keyboard controller": "启用键盘手柄", "Disable keyboard controller": "停用键盘手柄",
+	"WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable": "WASD：左摇杆 · TFGH：右摇杆 · IJKL：面键 · 方向键：方向键 · Esc：退出",
+	"Sign in with Microsoft": "使用微软账号登录", "Sign out": "退出登录", "Consoles": "主机", "Refresh consoles": "刷新主机", "Wake console": "唤醒主机", "Start stream": "开始串流",
+	"Settings": "设置", "Resolution": "分辨率", "Language": "游戏语言", "Market": "目录市场", "Interface language": "界面语言", "Prefer IPv6 candidates": "优先使用 IPv6 候选地址", "Starting volume": "启动音量",
+	"Keyboard controller": "键盘手柄", "On": "开机", "Off": "关机", "ConnectedStandby": "待机",
+	"Cloud games": "云游戏", "Search games": "搜索游戏", "Reload cloud catalog": "重新加载云游戏目录", "Play": "开始游戏", "Visit: ": "访问：", "Code: ": "代码：",
+	"Stopping stream…": "正在停止串流…", "Canceling sign-in…": "正在取消登录…", "Sign-in canceled.": "登录已取消。", "Requesting sign-in code…": "正在获取登录代码…", "Complete sign-in in your browser.": "请在浏览器中完成登录。", "Connecting to Xbox…": "正在连接 Xbox…", "Restoring sign-in…": "正在恢复登录…", "Signing out…": "正在退出登录…", "Signed out.": "已退出登录。",
+	"Refreshing consoles…": "正在刷新主机…", "Sending wake request…": "正在发送唤醒请求…", "Wake request sent. The console may take a moment to start.": "唤醒请求已发送，主机可能需要一些时间启动。", "Starting stream…": "正在启动串流…", "Starting cloud game…": "正在启动云游戏…",
+	"Preparing stream…": "正在准备串流…", "Waiting for available capacity…": "正在等待可用资源…", "Authorizing connection…": "正在授权连接…", "Negotiating connection…": "正在协商连接…", "Negotiation complete; waiting for connection…": "协商完成，正在等待连接…", "Connected; waiting for video…": "已连接，正在等待视频…", "Streaming video.": "正在播放视频。", "Connection interrupted…": "连接中断…", "Connection failed; cleaning up…": "连接失败，正在清理…", "Connection failed; please retry.": "连接失败，请重试。", "Stream stopped.": "串流已停止。",
+	"Loading cloud games…": "正在加载云游戏…", "Cloud games unavailable for this account or region.": "当前账号或地区无法使用云游戏。", "Invalid cloud service region.": "云服务区域无效。", "Unable to load cloud games.": "无法加载云游戏。", "Home streaming unavailable; checking cloud games.": "主机串流不可用，正在检查云游戏。", "System credential store unavailable; sign in manually.": "系统凭据库不可用，请手动登录。", "Unable to save renewed login; sign in may be required next time.": "无法保存更新的登录信息，下次可能需要重新登录。", "Unable to open browser; enter the address manually.": "无法打开浏览器，请手动输入地址。",
+}
+var chinesePrefixes = []struct{ en, zh string }{
+	{"ffmpeg is required for streaming; install FFmpeg and add it to PATH: ", "串流需要 ffmpeg；请安装 FFmpeg 并加入 PATH："},
+	{"ffplay is required for streaming; install FFmpeg and add it to PATH: ", "串流需要 ffplay；请安装 FFmpeg 并加入 PATH："},
+	{"Sign-in failed: ", "登录失败："}, {"Stream failed: ", "串流启动失败："}, {"Stream error: ", "串流错误："}, {"Wake request failed: ", "唤醒请求失败："}, {"Unable to refresh consoles: ", "无法刷新主机："}, {"Unable to save settings: ", "无法保存设置："}, {"Signed out locally; unable to remove saved login: ", "已在本次运行中退出，但无法删除已保存的登录信息："},
+}
+
+func (a *app) tr(text string) string {
+	if a.prefs.UILanguage != "简体中文" {
+		return text
+	}
+	const persistenceSuffix = " Login could not be saved in the system credential store."
+	if strings.HasSuffix(text, persistenceSuffix) {
+		return a.tr(strings.TrimSuffix(text, persistenceSuffix)) + " 无法将登录信息保存到系统凭据库。"
+	}
+	if value, ok := chinese[text]; ok {
+		return value
+	}
+	for _, item := range chinesePrefixes {
+		if strings.HasPrefix(text, item.en) {
+			return item.zh + strings.TrimPrefix(text, item.en)
+		}
+	}
+	if strings.HasPrefix(text, "Signed in. Found ") || strings.HasPrefix(text, "Found ") {
+		text = strings.Replace(text, "Signed in. Found ", "已登录。找到 ", 1)
+		text = strings.Replace(text, "Found ", "找到 ", 1)
+		text = strings.Replace(text, " console(s).", " 台主机。", 1)
+		return strings.Replace(text, " Login could not be saved in the system credential store.", " 无法将登录信息保存到系统凭据库。", 1)
+	}
+	if strings.Contains(text, " games") {
+		text = strings.Replace(text, " games", " 个游戏", 1)
+		return strings.Replace(text, " (catalog unavailable; showing IDs)", "（目录不可用，显示 ID）", 1)
+	}
+	return text
+}
