@@ -30,3 +30,5 @@ During a stream, keyboard gamepad mode can be enabled manually. WASD and TFGH co
 The stream view offers a full-screen toggle. Starting volume is configurable before a stream; changes apply to the next stream.
 
 The console list can send a wake request through Xbox remote management. The console must allow remote management, and an accepted request does not guarantee it has powered on. This flow has not been tested with a real Xbox.
+
+The optional IPv6 preference orders remote ICE candidates for new sessions; IPv4 candidates remain available.

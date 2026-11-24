@@ -7,6 +7,7 @@ import (
 	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
 	"github.com/oroliy/XStreamingDesktop/go-client/settings"
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
+	"path/filepath"
 	"testing"
 )
 
@@ -91,5 +92,18 @@ func TestCloudGameSearch(t *testing.T) {
 	tt.Frame()
 	if !tt.HasText("Halo Infinite") || tt.HasText("Forza Horizon") {
 		t.Fatal(tt.Texts())
+	}
+}
+
+func TestIPv6PreferencePersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	a := &app{prefs: settings.Defaults(), settingsPath: path}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if err := tt.Click("Prefer IPv6 candidates"); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := settings.Load(path)
+	if err != nil || !saved.PreferIPv6 {
+		t.Fatal(saved, err)
 	}
 }

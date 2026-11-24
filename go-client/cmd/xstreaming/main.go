@@ -176,6 +176,11 @@ func (a *app) view(c *ui.Context) {
 					}
 				}
 			})
+			if ui.Checkbox(c.Key("prefer-ipv6"), &a.prefs.PreferIPv6, "Prefer IPv6 candidates").Changed() && a.settingsPath != "" {
+				if err := settings.Save(a.settingsPath, a.prefs); err != nil {
+					a.status = "Unable to save settings: " + err.Error()
+				}
+			}
 			ui.Row(c).Gap(8).Children(func() {
 				ui.Text(c, "Starting volume")
 				if ui.Slider(c.Key("volume"), &a.prefs.Volume, 0, 100).Label("Starting volume").Width(180).Changed() && a.settingsPath != "" {
@@ -471,7 +476,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	}
 	s, err := session.Start(ctx, client, session.Options{Play: streaming.PlayOptions{Target: target, Resolution: prefs.ResolutionCode(), Locale: prefs.Language}, TransferToken: func(ctx context.Context) (string, error) {
 		return credentials.Transfer(ctx)
-	}, RTC: webrtc.Configuration{ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:worldaz.relay.teams.microsoft.com:3478"}}}}, OnTrack: track, OnError: onError, OnConnectionState: func(state webrtc.PeerConnectionState) {
+	}, RTC: webrtc.Configuration{ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:worldaz.relay.teams.microsoft.com:3478"}}}}, OnTrack: track, OnError: onError, PreferIPv6: prefs.PreferIPv6, OnConnectionState: func(state webrtc.PeerConnectionState) {
 		if ctx.Err() != nil {
 			return
 		}

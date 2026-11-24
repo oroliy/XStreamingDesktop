@@ -15,6 +15,7 @@ type Settings struct {
 	Language   string  `json:"language"`
 	Market     string  `json:"market"`
 	Volume     float64 `json:"volume"`
+	PreferIPv6 bool    `json:"prefer_ipv6"`
 }
 
 func Defaults() Settings {
