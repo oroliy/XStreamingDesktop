@@ -10,6 +10,7 @@ var chinese = map[string]string{
 	"Hide controls": "收起控制栏", "Show controls": "显示控制栏",
 	"Enable microphone": "启用麦克风", "Disable microphone": "关闭麦克风", "Starting microphone…": "正在启动麦克风…", "Microphone on.": "麦克风已开启。", "Stopping microphone…": "正在关闭麦克风…",
 	"PulseAudio input name": "PulseAudio 输入设备名", "Save microphone input": "保存麦克风设备", "Microphone input saved.": "麦克风设备已保存。", "Invalid microphone input name.": "麦克风设备名无效。",
+	"Microphone input": "麦克风输入", "Available microphone inputs": "可用麦克风输入", "Refresh microphone inputs": "刷新麦克风输入", "Loading microphone inputs…": "正在获取麦克风输入…", "No microphone inputs found.": "未找到麦克风输入。", "Microphone inputs refreshed.": "麦克风输入已刷新。",
 	"Connection did not recover; please retry.": "连接未能恢复，请重试。",
 	"Controller input interrupted; retrying…":   "手柄输入中断，正在重试…",
 	"Open Microsoft sign-in page":               "打开微软登录页面", "Enable keyboard controller": "启用键盘手柄", "Disable keyboard controller": "停用键盘手柄",
@@ -24,6 +25,7 @@ var chinese = map[string]string{
 	"Loading cloud games…": "正在加载云游戏…", "Cloud games unavailable for this account or region.": "当前账号或地区无法使用云游戏。", "Invalid cloud service region.": "云服务区域无效。", "Unable to load cloud games.": "无法加载云游戏。", "Home streaming unavailable; checking cloud games.": "主机串流不可用，正在检查云游戏。", "System credential store unavailable; sign in manually.": "系统凭据库不可用，请手动登录。", "Unable to save renewed login; sign in may be required next time.": "无法保存更新的登录信息，下次可能需要重新登录。", "Unable to open browser; enter the address manually.": "无法打开浏览器，请手动输入地址。",
 }
 var chinesePrefixes = []struct{ en, zh string }{
+	{"Unable to list microphone inputs: ", "无法获取麦克风输入："},
 	{"Microphone failed: ", "麦克风启动或采集失败："},
 	{"Connection did not recover; remote session cleanup failed: ", "连接未能恢复，且远程会话清理失败："},
 	{"ffmpeg is required for streaming; install FFmpeg and add it to PATH: ", "串流需要 ffmpeg；请安装 FFmpeg 并加入 PATH："},

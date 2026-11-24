@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/oroliy/XStreamingDesktop/go-client/media"
 	"github.com/oroliy/XStreamingDesktop/go-client/session"
@@ -28,6 +29,46 @@ func (s liveMicrophoneSession) StartMicrophone(ctx context.Context) (microphoneW
 }
 
 type microphoneEncoder func(context.Context, []string, func(pionmedia.Sample) error) error
+
+func microphoneSourceOptions(sources []string, selected string) []string {
+	options := []string{"default"}
+	seen := map[string]bool{"default": true}
+	for _, source := range append(append([]string(nil), sources...), selected) {
+		if source != "" && !seen[source] {
+			seen[source] = true
+			options = append(options, source)
+		}
+	}
+	return options
+}
+
+func (a *app) refreshMicrophoneSources() {
+	if a.micSourcesLoading || a.ctx == nil || a.ctx.Err() != nil {
+		return
+	}
+	a.micSourcesLoading = true
+	a.micSourcesStatus = "Loading microphone inputs…"
+	go func() {
+		ctx, cancel := context.WithTimeout(a.ctx, 5*time.Second)
+		defer cancel()
+		sources, err := media.PulseSources(ctx)
+		a.update(func() {
+			if a.ctx.Err() != nil {
+				return
+			}
+			a.micSourcesLoading = false
+			if err != nil {
+				a.micSourcesStatus = "Unable to list microphone inputs: " + err.Error()
+				return
+			}
+			a.micSources = sources
+			a.micSourcesStatus = "Microphone inputs refreshed."
+			if len(sources) == 0 {
+				a.micSourcesStatus = "No microphone inputs found."
+			}
+		})
+	}()
+}
 
 // runMicrophone negotiates first; cancellation during negotiation prevents capture
 // without interrupting signaling for the enclosing stream.

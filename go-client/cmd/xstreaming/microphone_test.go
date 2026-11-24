@@ -153,3 +153,33 @@ func TestMicrophoneSourceSettingsUI(t *testing.T) {
 		t.Fatalf("source=%q error=%v", saved.MicrophoneSource, err)
 	}
 }
+
+func TestMicrophoneSourceOptionsPreserveSelection(t *testing.T) {
+	got := microphoneSourceOptions([]string{"default", "virtual_mic", "virtual_mic"}, "disconnected_mic")
+	want := []string{"default", "virtual_mic", "disconnected_mic"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestChooseDiscoveredMicrophoneSource(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("microphone input setting is Linux-only")
+	}
+	path := filepath.Join(t.TempDir(), "settings.json")
+	a := &app{prefs: settings.Defaults(), settingsPath: path, micSourceDraft: "default", micSources: []string{"virtual_mic"}}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if err := tt.Click("Available microphone inputs"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("virtual_mic"); err != nil {
+		t.Fatalf("%v; visible: %v", err, tt.Texts())
+	}
+	if err := tt.Click("Save microphone input"); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := settings.Load(path)
+	if err != nil || saved.MicrophoneSource != "virtual_mic" {
+		t.Fatalf("source=%q error=%v", saved.MicrophoneSource, err)
+	}
+}

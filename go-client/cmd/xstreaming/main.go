@@ -57,6 +57,9 @@ type app struct {
 	micStopping       bool
 	micStatus         string
 	micSourceDraft    string
+	micSources        []string
+	micSourcesLoading bool
+	micSourcesStatus  string
 	consoleText       string
 	textStatus        string
 	textSending       bool
@@ -305,6 +308,16 @@ func (a *app) view(c *ui.Context) {
 			}
 			ui.Text(c, a.tr("Settings")).Bold()
 			if runtime.GOOS == "linux" {
+				ui.Row(c).Gap(8).Children(func() {
+					ui.Text(c, a.tr("Microphone input"))
+					ui.Select(c.Key("microphone-sources"), &a.micSourceDraft, microphoneSourceOptions(a.micSources, a.micSourceDraft)).Label(a.tr("Available microphone inputs")).Width(280)
+					if ui.Button(c.Key("refresh-microphone-sources"), a.tr("Refresh microphone inputs")).Disabled(a.micSourcesLoading).Clicked() {
+						a.refreshMicrophoneSources()
+					}
+				})
+				if a.micSourcesStatus != "" {
+					ui.Text(c, a.tr(a.micSourcesStatus))
+				}
 				ui.Row(c).Gap(8).Children(func() {
 					ui.TextInput(c.Key("microphone-source"), &a.micSourceDraft).Label(a.tr("PulseAudio input name")).Placeholder("default").MaxLength(256).Width(300)
 					if ui.Button(c.Key("save-microphone-source"), a.tr("Save microphone input")).Clicked() {

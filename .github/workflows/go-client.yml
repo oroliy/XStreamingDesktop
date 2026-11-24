@@ -59,7 +59,7 @@ jobs:
             cat "$pulse_dir/server.log"
             exit 1
           fi
-          XSTREAMING_TEST_PULSE_SERVER="unix:$pulse_dir/runtime/native" go test -race ./media ./session -run '^(TestEncodeMicrophoneFromVirtualPulseAudio|TestSessionNegotiationAndCleanup)$' -count=1
+          XSTREAMING_TEST_PULSE_SERVER="unix:$pulse_dir/runtime/native" go test -race ./media ./session -run '^(TestEncodeMicrophoneFromVirtualPulseAudio|TestPulseSourcesWithVirtualServer|TestSessionNegotiationAndCleanup)$' -count=1
   cross-build:
     runs-on: ubuntu-latest
     strategy:
