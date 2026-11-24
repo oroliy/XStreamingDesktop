@@ -56,18 +56,22 @@ func (a *app) refreshMicrophoneSources() {
 			if a.ctx.Err() != nil {
 				return
 			}
-			a.micSourcesLoading = false
-			if err != nil {
-				a.micSourcesStatus = "Unable to list microphone inputs: " + err.Error()
-				return
-			}
-			a.micSources = sources
-			a.micSourcesStatus = "Microphone inputs refreshed."
-			if len(sources) == 0 {
-				a.micSourcesStatus = "No microphone inputs found."
-			}
+			a.finishMicrophoneSources(sources, err)
 		})
 	}()
+}
+
+func (a *app) finishMicrophoneSources(sources []string, err error) {
+	a.micSourcesLoading = false
+	if err != nil {
+		a.micSourcesStatus = "Unable to list microphone inputs: " + err.Error()
+		return
+	}
+	a.micSources = sources
+	a.micSourcesStatus = "Microphone inputs refreshed."
+	if len(sources) == 0 {
+		a.micSourcesStatus = "No microphone inputs found."
+	}
 }
 
 // runMicrophone negotiates first; cancellation during negotiation prevents capture

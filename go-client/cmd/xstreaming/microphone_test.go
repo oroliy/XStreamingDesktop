@@ -183,3 +183,26 @@ func TestChooseDiscoveredMicrophoneSource(t *testing.T) {
 		t.Fatalf("source=%q error=%v", saved.MicrophoneSource, err)
 	}
 }
+
+func TestMicrophoneDiscoveryFailureKeepsManualChoice(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("microphone input setting is Linux-only")
+	}
+	path := filepath.Join(t.TempDir(), "settings.json")
+	a := &app{prefs: settings.Defaults(), settingsPath: path, micSourceDraft: "disconnected_mic", micSourcesLoading: true, micSources: []string{"previous_mic"}}
+	a.finishMicrophoneSources(nil, errors.New("service unavailable"))
+	if a.micSourcesLoading || a.micSourceDraft != "disconnected_mic" || !reflect.DeepEqual(a.micSources, []string{"previous_mic"}) {
+		t.Fatal("failed discovery changed the existing selection")
+	}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if !tt.HasText("Unable to list microphone inputs: service unavailable") {
+		t.Fatal("discovery failure was not shown")
+	}
+	if err := tt.Click("Save microphone input"); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := settings.Load(path)
+	if err != nil || saved.MicrophoneSource != "disconnected_mic" {
+		t.Fatalf("manual source=%q error=%v", saved.MicrophoneSource, err)
+	}
+}
