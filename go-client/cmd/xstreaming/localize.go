@@ -7,7 +7,7 @@ var chinese = map[string]string{
 	"Full screen": "全屏", "Exit full screen": "退出全屏", "Stop stream": "停止串流", "Cancel sign-in": "取消登录",
 	"Open Microsoft sign-in page": "打开微软登录页面", "Enable keyboard controller": "启用键盘手柄", "Disable keyboard controller": "停用键盘手柄",
 	"WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable": "WASD：左摇杆 · TFGH：右摇杆 · IJKL：面键 · 方向键：方向键 · Esc：退出",
-	"Sign in with Microsoft": "使用微软账号登录", "Sign out": "退出登录", "Consoles": "主机", "Refresh consoles": "刷新主机", "Wake console": "唤醒主机", "Start stream": "开始串流",
+	"Saved sign-in expired; please sign in again.":                                        "已保存的登录信息已失效，请重新登录。", "Sign in with Microsoft": "使用微软账号登录", "Sign out": "退出登录", "Consoles": "主机", "Refresh consoles": "刷新主机", "Wake console": "唤醒主机", "Start stream": "开始串流",
 	"Settings": "设置", "Resolution": "分辨率", "Language": "游戏语言", "Market": "目录市场", "Interface language": "界面语言", "Prefer IPv6 candidates": "优先使用 IPv6 候选地址", "Starting volume": "启动音量",
 	"Keyboard controller": "键盘手柄", "On": "开机", "Off": "关机", "ConnectedStandby": "待机",
 	"Cloud games": "云游戏", "Search games": "搜索游戏", "Reload cloud catalog": "重新加载云游戏目录", "Play": "开始游戏", "Visit: ": "访问：", "Code: ": "代码：",

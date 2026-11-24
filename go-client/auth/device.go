@@ -38,6 +38,12 @@ type oauthError struct {
 
 func (e *oauthError) Error() string { return "Microsoft OAuth: " + e.Code }
 
+// IsInvalidGrant identifies a refresh token rejected by Microsoft as invalid or expired.
+func IsInvalidGrant(err error) bool {
+	var oauth *oauthError
+	return errors.As(err, &oauth) && oauth.Code == "invalid_grant"
+}
+
 type Client struct {
 	endpoint    string
 	http        *http.Client
@@ -105,6 +111,9 @@ func (c *Client) Poll(ctx context.Context, code DeviceCode) (Token, error) {
 		if err == nil {
 			if token.AccessToken == "" {
 				return token, errors.New("missing access token")
+			}
+			if token.RefreshToken == "" {
+				return token, errors.New("missing refresh token")
 			}
 			return token, nil
 		}

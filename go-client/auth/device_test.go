@@ -3,8 +3,10 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -69,5 +71,36 @@ func TestTransferToken(t *testing.T) {
 	token, err := c.TransferToken(context.Background(), "refresh")
 	if err != nil || token.AccessToken != "transfer" {
 		t.Fatal(err)
+	}
+}
+
+func TestInvalidGrantClassification(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"private details"}`))
+	}))
+	defer server.Close()
+	client := &Client{endpoint: server.URL, http: server.Client()}
+	_, err := client.Refresh(context.Background(), "expired")
+	if !IsInvalidGrant(fmt.Errorf("refresh: %w", err)) {
+		t.Fatalf("invalid grant not recognized: %v", err)
+	}
+	if strings.Contains(err.Error(), "private details") {
+		t.Fatal("OAuth error exposed service details")
+	}
+	if IsInvalidGrant(context.DeadlineExceeded) || IsInvalidGrant(&oauthError{Code: "temporarily_unavailable"}) || IsInvalidGrant(nil) {
+		t.Fatal("classified a transient failure as an invalid grant")
+	}
+}
+
+func TestPollRequiresRefreshToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"access_token":"access"}`))
+	}))
+	defer server.Close()
+	client := &Client{endpoint: server.URL, http: server.Client()}
+	_, err := client.Poll(context.Background(), DeviceCode{DeviceCode: "code", ExpiresIn: 3, Interval: 1})
+	if err == nil || !strings.Contains(err.Error(), "missing refresh token") {
+		t.Fatalf("got %v", err)
 	}
 }

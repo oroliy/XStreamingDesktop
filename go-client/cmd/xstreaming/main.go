@@ -362,6 +362,15 @@ func (a *app) connectAccount(ctx context.Context, refresh string, prefs settings
 	if ctx.Err() != nil {
 		return
 	}
+	if auth.IsInvalidGrant(homeErr) {
+		a.update(func() {
+			if ctx.Err() == nil {
+				a.busy = false
+				a.status = "Sign-in expired; please sign in again."
+			}
+		})
+		return
+	}
 	a.update(func() {
 		if ctx.Err() != nil {
 			return
