@@ -207,21 +207,25 @@ func TestSaveMicrophoneSource(t *testing.T) {
 }
 
 func TestMicrophoneSourceSettingsUI(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("microphone input setting is Linux-only")
+	if !microphoneSourceSettingsSupported(runtime.GOOS) {
+		t.Skip("microphone input setting is unavailable")
 	}
 	path := filepath.Join(t.TempDir(), "settings.json")
 	a := &app{prefs: settings.Defaults(), settingsPath: path}
 	tt := ui.NewTester(a.view, 1024, 768)
-	if err := tt.Click("PulseAudio input name"); err != nil {
+	label, source := "PulseAudio input name", "alsa_input.example"
+	if runtime.GOOS == "windows" {
+		label, source = "DirectShow input name", "Microphone (USB)"
+	}
+	if err := tt.Click(label); err != nil {
 		t.Fatal(err)
 	}
-	tt.Type("alsa_input.example")
+	tt.Type(source)
 	if err := tt.Click("Save microphone input"); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := settings.Load(path)
-	if err != nil || saved.MicrophoneSource != "alsa_input.example" {
+	if err != nil || saved.MicrophoneSource != source {
 		t.Fatalf("source=%q error=%v", saved.MicrophoneSource, err)
 	}
 }
@@ -235,8 +239,8 @@ func TestMicrophoneSourceOptionsPreserveSelection(t *testing.T) {
 }
 
 func TestChooseDiscoveredMicrophoneSource(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("microphone input setting is Linux-only")
+	if !microphoneSourceSettingsSupported(runtime.GOOS) {
+		t.Skip("microphone input setting is unavailable")
 	}
 	path := filepath.Join(t.TempDir(), "settings.json")
 	a := &app{prefs: settings.Defaults(), settingsPath: path, micSourceDraft: "default", micSources: []media.PulseSource{{Name: "virtual_mic", Description: "Virtual mic"}}}
@@ -257,8 +261,8 @@ func TestChooseDiscoveredMicrophoneSource(t *testing.T) {
 }
 
 func TestMicrophoneDiscoveryFailureKeepsManualChoice(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("microphone input setting is Linux-only")
+	if !microphoneSourceSettingsSupported(runtime.GOOS) {
+		t.Skip("microphone input setting is unavailable")
 	}
 	path := filepath.Join(t.TempDir(), "settings.json")
 	a := &app{prefs: settings.Defaults(), settingsPath: path, micSourceDraft: "disconnected_mic", micSourcesLoading: true, micSources: []media.PulseSource{{Name: "previous_mic"}}}
