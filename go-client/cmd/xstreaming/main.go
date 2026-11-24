@@ -12,6 +12,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/oroliy/XStreamingDesktop/go-client/auth"
+	"github.com/oroliy/XStreamingDesktop/go-client/controller"
 	"github.com/oroliy/XStreamingDesktop/go-client/media"
 	"github.com/oroliy/XStreamingDesktop/go-client/session"
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
@@ -35,7 +36,7 @@ type app struct {
 func (a *app) view(c *ui.Context) {
 	ui.Column(c).Fill().Center().Gap(12).Children(func() {
 		ui.Text(c, "XStreaming").FontSize(32).Bold()
-		ui.Text(c, "Experimental preview — physical controller support is not available.")
+		ui.Text(c, "Experimental preview — controller and playback support are unverified.")
 		if a.frame != nil {
 			ui.Image(c, a.frame).Width(640).Height(360).Fit(ui.Contain)
 		}
@@ -213,6 +214,11 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, refresh
 		})
 		return
 	}
+	go func() {
+		if err := controller.Run(ctx, s.Input(), s.InputChannel(), s.Ready()); err != nil {
+			onError(err)
+		}
+	}()
 	a.update(func() {
 		if ctx.Err() == nil {
 			a.busy = false

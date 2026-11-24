@@ -10,6 +10,7 @@ import (
 )
 
 type Peer struct {
+	ready    chan struct{}
 	conn     *webrtc.PeerConnection
 	channels map[string]*webrtc.DataChannel
 }
@@ -21,7 +22,7 @@ func New(config webrtc.Configuration, onTrack func(*webrtc.TrackRemote, *webrtc.
 	if err != nil {
 		return nil, err
 	}
-	p := &Peer{conn: conn, channels: make(map[string]*webrtc.DataChannel)}
+	p := &Peer{conn: conn, channels: make(map[string]*webrtc.DataChannel), ready: make(chan struct{})}
 	fail := func(err error) (*Peer, error) { _ = conn.Close(); return nil, err }
 	if onTrack != nil {
 		conn.OnTrack(onTrack)

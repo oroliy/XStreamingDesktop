@@ -53,3 +53,6 @@ func (s *InputSender) SendGamepads(frames []protocol.Gamepad) error {
 	s.seq = next
 	return nil
 }
+
+// Ready closes after the message and control channels complete their initial handshake.
+func (p *Peer) Ready() <-chan struct{} { return p.ready }

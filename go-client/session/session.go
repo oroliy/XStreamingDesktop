@@ -115,7 +115,9 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 	}()
 	return s, nil
 }
-func (s *Session) Input() *peer.InputSender { return s.peer.Input() }
+func (s *Session) Ready() <-chan struct{}            { return s.peer.Ready() }
+func (s *Session) InputChannel() *webrtc.DataChannel { return s.peer.Channel("input") }
+func (s *Session) Input() *peer.InputSender          { return s.peer.Input() }
 func (s *Session) Close() error {
 	s.once.Do(func() {
 		s.cancel()

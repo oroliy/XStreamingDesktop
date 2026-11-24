@@ -47,6 +47,7 @@ func (p *Peer) StartControl(ctx context.Context, onError func(error)) {
 			report(err)
 			return
 		}
+		close(p.ready)
 		go func() {
 			timer := time.NewTimer(500 * time.Millisecond)
 			defer timer.Stop()
