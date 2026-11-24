@@ -639,14 +639,27 @@ func TestConnectedSessionIsNotTimedOut(t *testing.T) {
 	}
 }
 
-// No ICE candidates are exchanged, so signaling succeeds but the connection stalls.
 func TestConnectionTimeoutStopsRemoteSession(t *testing.T) {
+	testStartupTimeoutStopsRemoteSession(t, false)
+}
+
+func TestHandshakeTimeoutStopsRemoteSession(t *testing.T) {
+	testStartupTimeoutStopsRemoteSession(t, true)
+}
+
+// The remote either has no ICE path or connects without acknowledging the
+// message handshake. Both failures must stop the provisioned remote session.
+func testStartupTimeoutStopsRemoteSession(t *testing.T, allowConnection bool) {
+	t.Helper()
 	remote, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer remote.Close()
 	withoutCandidates := func(sdp string) string {
+		if allowConnection {
+			return sdp
+		}
 		lines := strings.Split(sdp, "\r\n")
 		filtered := lines[:0]
 		for _, line := range lines {
@@ -715,14 +728,18 @@ func TestConnectionTimeoutStopsRemoteSession(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	s, err := Start(ctx, client, Options{Play: streaming.PlayOptions{Target: "console"}, ConnectionTimeout: 50 * time.Millisecond})
+	s, err := Start(ctx, client, Options{Play: streaming.PlayOptions{Target: "console"}, ConnectionTimeout: time.Second, HandshakeTimeout: 50 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 	select {
 	case <-s.Done():
-		if !errors.Is(s.Err(), ErrConnectionTimeout) {
+		want := ErrConnectionTimeout
+		if allowConnection {
+			want = ErrHandshakeTimeout
+		}
+		if !errors.Is(s.Err(), want) {
 			t.Fatalf("unexpected session cause: %v", s.Err())
 		}
 	case <-ctx.Done():
