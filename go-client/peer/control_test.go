@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/pion/webrtc/v4"
 	"testing"
 	"time"
@@ -103,4 +104,40 @@ func TestControlHandshake(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("initial keyframe request did not follow handshake")
 	}
+}
+
+func TestKeyframeRequestsRecoverAfterSendFailures(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sendError := errors.New("temporarily unavailable")
+	attempts, reports := 0, 0
+	requestKeyframes(ctx, time.Millisecond, func() error {
+		attempts++
+		switch attempts {
+		case 1, 2:
+			return sendError
+		case 3:
+			return nil
+		default:
+			cancel()
+			return nil
+		}
+	}, func(err error) {
+		if !errors.Is(err, sendError) {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		reports++
+	})
+	if attempts != 4 || reports != 1 {
+		t.Fatalf("attempts=%d reports=%d", attempts, reports)
+	}
+}
+
+func TestKeyframeRequestsStopWhenCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	requestKeyframes(ctx, time.Millisecond, func() error {
+		t.Fatal("sent request after cancellation")
+		return nil
+	}, func(error) { t.Fatal("reported after cancellation") })
 }

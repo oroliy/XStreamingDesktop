@@ -57,27 +57,9 @@ func (p *Peer) StartControl(ctx context.Context, onError func(error)) {
 			case <-timer.C:
 			}
 			close(p.ready)
-			// Ask for a fresh frame as soon as the control handshake completes;
-			// otherwise startup can wait for the first periodic request.
-			if err := send(control, protocol.KeyframeRequest()); err != nil {
-				if ctx.Err() == nil {
-					report(err)
-				}
-				return
-			}
-			ticker := time.NewTicker(5 * time.Second)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					if err := send(control, protocol.KeyframeRequest()); err != nil {
-						report(err)
-						return
-					}
-				}
-			}
+			requestKeyframes(ctx, 5*time.Second, func() error {
+				return send(control, protocol.KeyframeRequest())
+			}, report)
 		}()
 	}
 	control.OnOpen(func() { mu.Lock(); controlOpen = true; mu.Unlock(); start() })
@@ -111,4 +93,30 @@ func (p *Peer) StartControl(ctx context.Context, onError func(error)) {
 		mu.Unlock()
 		start()
 	})
+}
+
+// requestKeyframes sends immediately, then retries at a bounded rate even if
+// a transient send error occurs while the connection is recovering.
+func requestKeyframes(ctx context.Context, interval time.Duration, send func() error, report func(error)) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	failed := false
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := send(); err != nil {
+			if !failed && ctx.Err() == nil {
+				report(err)
+			}
+			failed = true
+		} else {
+			failed = false
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
