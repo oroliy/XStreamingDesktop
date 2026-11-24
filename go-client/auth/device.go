@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -37,6 +38,25 @@ type oauthError struct {
 }
 
 func (e *oauthError) Error() string { return "Microsoft OAuth: " + e.Code }
+
+type oauthHTTPError struct{ status int }
+
+func (e *oauthHTTPError) Error() string {
+	return fmt.Sprintf("Microsoft OAuth returned HTTP %d", e.status)
+}
+
+func transientOAuthError(err error) bool {
+	var oauth *oauthError
+	if errors.As(err, &oauth) {
+		return oauth.Code == "temporarily_unavailable" || oauth.Code == "server_error"
+	}
+	var response *oauthHTTPError
+	if errors.As(err, &response) {
+		return response.status >= 500 && response.status <= 599
+	}
+	var network net.Error
+	return errors.Is(err, io.EOF) || (errors.As(err, &network) && (network.Timeout() || network.Temporary()))
+}
 
 // IsInvalidGrant identifies a refresh token rejected by Microsoft as invalid or expired.
 func IsInvalidGrant(err error) bool {
@@ -76,7 +96,7 @@ func (c *Client) postURL(ctx context.Context, endpoint string, form url.Values, 
 		if json.Unmarshal(b, &e) == nil && e.Code != "" {
 			return &e
 		}
-		return fmt.Errorf("Microsoft OAuth returned HTTP %d", res.StatusCode)
+		return &oauthHTTPError{status: res.StatusCode}
 	}
 	return json.Unmarshal(b, out)
 }
@@ -99,6 +119,7 @@ func (c *Client) Poll(ctx context.Context, code DeviceCode) (Token, error) {
 	if interval < 1 {
 		interval = 5
 	}
+	transientFailures := 0
 	for {
 		timer := time.NewTimer(time.Duration(interval) * time.Second)
 		select {
@@ -117,18 +138,30 @@ func (c *Client) Poll(ctx context.Context, code DeviceCode) (Token, error) {
 			}
 			return token, nil
 		}
+		if ctx.Err() != nil {
+			return token, ctx.Err()
+		}
 		var oauth *oauthError
-		if !errors.As(err, &oauth) {
-			return token, err
+		if errors.As(err, &oauth) {
+			switch oauth.Code {
+			case "authorization_pending":
+				transientFailures = 0
+				continue
+			case "slow_down":
+				interval += 5
+				transientFailures = 0
+				continue
+			}
 		}
-		switch oauth.Code {
-		case "authorization_pending":
+		if transientOAuthError(err) && transientFailures < 3 {
+			transientFailures++
+			var network net.Error
+			if errors.As(err, &network) && network.Timeout() && interval < 60 {
+				interval = min(interval*2, 60)
+			}
 			continue
-		case "slow_down":
-			interval += 5
-		default:
-			return token, err
 		}
+		return token, err
 	}
 }
 func (c *Client) Refresh(ctx context.Context, refreshToken string) (Token, error) {

@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -102,5 +104,37 @@ func TestPollRequiresRefreshToken(t *testing.T) {
 	_, err := client.Poll(context.Background(), DeviceCode{DeviceCode: "code", ExpiresIn: 3, Interval: 1})
 	if err == nil || !strings.Contains(err.Error(), "missing refresh token") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestPollRetriesTransientServerFailure(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"refresh"}`))
+	}))
+	defer server.Close()
+	client := &Client{endpoint: server.URL, http: server.Client()}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	token, err := client.Poll(ctx, DeviceCode{DeviceCode: "code", ExpiresIn: 5, Interval: 1})
+	if err != nil || token.RefreshToken != "refresh" || calls.Load() != 2 {
+		t.Fatalf("calls=%d error=%v", calls.Load(), err)
+	}
+}
+
+func TestTransientOAuthErrorClassification(t *testing.T) {
+	for _, err := range []error{&oauthHTTPError{status: 503}, &oauthError{Code: "temporarily_unavailable"}, io.EOF} {
+		if !transientOAuthError(err) {
+			t.Fatalf("not transient: %v", err)
+		}
+	}
+	for _, err := range []error{&oauthHTTPError{status: 400}, &oauthError{Code: "access_denied"}, errors.New("invalid response")} {
+		if transientOAuthError(err) {
+			t.Fatalf("incorrectly transient: %v", err)
+		}
 	}
 }
