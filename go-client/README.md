@@ -25,7 +25,7 @@ Login persistence uses MyGo Secrets (Keychain, Windows Credential Manager or Lin
 
 GitHub Actions uploads unsigned preview binaries as short-lived workflow artifacts for supported targets. They do not include FFmpeg or ffplay. On macOS, GUI apps may inherit a different PATH from a terminal; if the executables are not found, start the preview from a terminal where they are available. On macOS and Linux, run `chmod +x xstreaming` after extracting the artifact.
 
-During a stream, keyboard gamepad mode can be enabled manually. WASD and TFGH control the sticks, IJKL the face buttons, arrow keys the D-pad, 1/4 triggers, 2/3 shoulders; Esc disables keyboard mode.
+During a stream, keyboard gamepad mode can be enabled manually. WASD and TFGH control the sticks, IJKL the face buttons, arrow keys the D-pad, 1/4 triggers, 2/3 shoulders; Esc disables keyboard mode. The stream view also offers an Xbox button press, and home streams offer a long press.
 
 The stream view offers a full-screen toggle and displays decoded video frames per second (which may differ from rendered frames). Starting volume is configurable before a stream; changes apply to the next stream.
 

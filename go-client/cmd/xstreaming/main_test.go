@@ -444,6 +444,32 @@ func TestConsoleTextHiddenForKeyboardController(t *testing.T) {
 	}
 }
 
+func TestXboxButtonControls(t *testing.T) {
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := &app{prefs: settings.Defaults(), streamCancel: cancel}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if tt.HasText("Press Xbox button") {
+		t.Fatal("button shown before connection")
+	}
+	a.streamConnected = true
+	tt.Frame()
+	if !tt.HasText("Press Xbox button") || tt.HasText("Hold Xbox button") {
+		t.Fatal("unexpected cloud controls")
+	}
+	if err := tt.Click("Press Xbox button"); err != nil {
+		t.Fatal(err)
+	}
+	if enabled, state := a.keyboard.Snapshot(); !enabled || state.Buttons&protocol.Nexus == 0 {
+		t.Fatal("press did not reach virtual controller")
+	}
+	a.streamHomeID = "console"
+	tt.Frame()
+	if !tt.HasText("Hold Xbox button") {
+		t.Fatal("home stream has no long press control")
+	}
+}
+
 func TestPowerOffRunsOnlyAfterSuccessfulCleanup(t *testing.T) {
 	done := make(chan error, 1)
 	called := make(chan struct{}, 1)

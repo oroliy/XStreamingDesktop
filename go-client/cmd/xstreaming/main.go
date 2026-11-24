@@ -123,6 +123,14 @@ func (a *app) view(c *ui.Context) {
 			}
 		}
 		if a.streamCancel != nil {
+			if a.streamConnected {
+				if ui.Button(c.Key("press-nexus"), a.tr("Press Xbox button")).Clicked() {
+					a.keyboard.PressNexus(150 * time.Millisecond)
+				}
+				if a.streamHomeID != "" && ui.Button(c.Key("hold-nexus"), a.tr("Hold Xbox button")).Clicked() {
+					a.keyboard.PressNexus(time.Second)
+				}
+			}
 			label := "Enable keyboard controller"
 			if a.keyboardEnabled {
 				label = "Disable keyboard controller"
@@ -795,6 +803,7 @@ func (a *app) stopStream(powerOff bool) {
 	a.wakeWarning = ""
 	a.keyboardEnabled = false
 	a.keyboard.Set(false, protocol.Gamepad{})
+	a.keyboard.ClearNexus()
 	if powerOff {
 		a.status = "Stopping stream before power-off…"
 	} else {
@@ -1137,6 +1146,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		a.wakeWarning = ""
 		a.keyboardEnabled = false
 		a.keyboard.Set(false, protocol.Gamepad{})
+		a.keyboard.ClearNexus()
 		if connectionTimedOut && cleanupErr == nil {
 			a.status = "Connection timed out; please retry."
 		} else if connectionTimedOut {

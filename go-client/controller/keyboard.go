@@ -2,6 +2,7 @@ package controller
 
 import (
 	"sync"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
@@ -9,9 +10,10 @@ import (
 
 // Keyboard safely shares the current virtual gamepad state with the sender.
 type Keyboard struct {
-	mu      sync.RWMutex
-	enabled bool
-	state   protocol.Gamepad
+	mu         sync.RWMutex
+	enabled    bool
+	state      protocol.Gamepad
+	nexusUntil time.Time
 }
 
 func (k *Keyboard) Set(enabled bool, state protocol.Gamepad) {
@@ -27,7 +29,26 @@ func (k *Keyboard) Set(enabled bool, state protocol.Gamepad) {
 func (k *Keyboard) Snapshot() (bool, protocol.Gamepad) {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
-	return k.enabled, k.state
+	state := k.state
+	pulsing := time.Now().Before(k.nexusUntil)
+	if pulsing {
+		state.Buttons |= protocol.Nexus
+	}
+	return k.enabled || pulsing, state
+}
+
+// PressNexus temporarily adds a Guide press to the first controller.
+func (k *Keyboard) PressNexus(duration time.Duration) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.nexusUntil = time.Now().Add(duration)
+}
+
+// ClearNexus releases a pending on-screen press when the stream ends.
+func (k *Keyboard) ClearNexus() {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.nexusUntil = time.Time{}
 }
 
 // MapKeys uses the original client's default keyboard-to-gamepad mapping.
