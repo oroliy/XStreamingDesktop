@@ -68,3 +68,24 @@ func TestPollingRateValidation(t *testing.T) {
 		t.Fatal("accepted invalid polling rate")
 	}
 }
+
+func TestLanguageAndMarketOptionsAreValid(t *testing.T) {
+	s := Defaults()
+	for _, language := range GameLanguages() {
+		s.Language = language
+		if err := s.Validate(); err != nil {
+			t.Errorf("language %q: %v", language, err)
+		}
+	}
+	s.Language = "en-US"
+	for _, market := range CatalogMarkets() {
+		s.Market = market
+		if err := s.Validate(); err != nil {
+			t.Errorf("market %q: %v", market, err)
+		}
+	}
+	s.Language = "invalid"
+	if s.Validate() == nil {
+		t.Fatal("accepted invalid language")
+	}
+}

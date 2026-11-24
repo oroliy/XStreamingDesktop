@@ -119,3 +119,18 @@ func TestResolveStopsAfterConsecutiveFailures(t *testing.T) {
 		t.Fatalf("calls=%d titles=%d error=%v", calls.Load(), len(out), err)
 	}
 }
+
+func TestResolveUsesSelectedMarketAndLanguage(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("market") != "BR" || r.URL.Query().Get("language") != "pt-BR" {
+			t.Errorf("unexpected catalog locale: %s", r.URL.RawQuery)
+		}
+		fmt.Fprint(w, `{"Products":{}}`)
+	}))
+	defer s.Close()
+	var title streaming.Title
+	title.Details.ProductID = "id"
+	if _, err := (&Client{http: s.Client(), endpoint: s.URL}).Resolve(context.Background(), []streaming.Title{title}, "BR", "pt-BR"); err != nil {
+		t.Fatal(err)
+	}
+}

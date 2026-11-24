@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 type Settings struct {
@@ -19,6 +20,16 @@ type Settings struct {
 	StickDeadzone float64 `json:"stick_deadzone"`
 	PollingRate   string  `json:"polling_rate"`
 	PreferIPv6    bool    `json:"prefer_ipv6"`
+}
+
+// GameLanguages lists locales sent to the streaming and catalog services.
+func GameLanguages() []string {
+	return []string{"ar-SA", "cs-CZ", "da-DK", "de-DE", "el-GR", "en-GB", "en-US", "es-ES", "es-MX", "fi-FI", "fr-FR", "he-IL", "hu-HU", "it-IT", "ja-JP", "ko-KR", "nb-NO", "nl-NL", "pl-PL", "pt-BR", "pt-PT", "ru-RU", "sk-SK", "sv-SE", "tr-TR", "zh-CN", "zh-TW"}
+}
+
+// CatalogMarkets controls product metadata; it does not change the streaming region.
+func CatalogMarkets() []string {
+	return []string{"AU", "AT", "BE", "BR", "CA", "CH", "CN", "CZ", "DE", "DK", "ES", "FI", "FR", "GB", "HK", "IE", "IT", "JP", "KR", "MX", "NL", "NO", "NZ", "PL", "PT", "SE", "SG", "TW", "US"}
 }
 
 func Defaults() Settings {
@@ -44,14 +55,10 @@ func (s Settings) Validate() error {
 	default:
 		return errors.New("invalid resolution")
 	}
-	switch s.Language {
-	case "en-US", "zh-TW", "zh-CN", "ja-JP":
-	default:
+	if !slices.Contains(GameLanguages(), s.Language) {
 		return errors.New("invalid language")
 	}
-	switch s.Market {
-	case "US", "TW", "JP", "GB":
-	default:
+	if !slices.Contains(CatalogMarkets(), s.Market) {
 		return errors.New("invalid market")
 	}
 	return nil

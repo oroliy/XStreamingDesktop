@@ -211,9 +211,9 @@ func (a *app) view(c *ui.Context) {
 				ui.Text(c, a.tr("Resolution"))
 				changed := ui.Select(c.Key("resolution"), &a.prefs.Resolution, []string{"720p", "1080p", "1080p HQ"}).Changed()
 				ui.Text(c, a.tr("Language"))
-				languageChanged := ui.Select(c.Key("language"), &a.prefs.Language, []string{"en-US", "zh-TW", "zh-CN", "ja-JP"}).Changed()
+				languageChanged := ui.Select(c.Key("language"), &a.prefs.Language, settings.GameLanguages()).Changed()
 				ui.Text(c, a.tr("Market"))
-				marketChanged := ui.Select(c.Key("market"), &a.prefs.Market, []string{"US", "TW", "JP", "GB"}).Changed()
+				marketChanged := ui.Select(c.Key("market"), &a.prefs.Market, settings.CatalogMarkets()).Changed()
 				if (languageChanged || marketChanged) && a.credentials != nil && a.accountCtx != nil && a.accountCtx.Err() == nil && a.streamCancel == nil {
 					a.startCloudLoad(a.accountCtx, a.credentials, a.prefs)
 				}

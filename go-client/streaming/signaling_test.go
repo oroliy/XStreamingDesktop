@@ -3,6 +3,7 @@ package streaming
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -101,5 +102,24 @@ func TestSignalingPollRetriesWithoutRepeatingPost(t *testing.T) {
 	result, err := c.ExchangeICE(context.Background(), "abc", nil)
 	if err != nil || string(result) != "[]" || posts.Load() != 1 || polls.Load() != 2 {
 		t.Fatalf("result=%s posts=%d polls=%d error=%v", result, posts.Load(), polls.Load(), err)
+	}
+}
+
+func TestStartUsesSelectedGameLanguage(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Settings struct {
+				Locale string `json:"locale"`
+			} `json:"settings"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Settings.Locale != "pt-BR" {
+			t.Errorf("unexpected locale %q: %v", body.Settings.Locale, err)
+		}
+		fmt.Fprint(w, `{"sessionPath":"/v5/sessions/example"}`)
+	}))
+	defer s.Close()
+	c, _ := NewClient(s.URL, "token", "cloud", s.Client())
+	if _, err := c.Start(context.Background(), PlayOptions{Target: "game", Locale: "pt-BR"}); err != nil {
+		t.Fatal(err)
 	}
 }
