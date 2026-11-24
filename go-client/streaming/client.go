@@ -15,13 +15,13 @@ import (
 )
 
 type Client struct {
-	mu        sync.Mutex
-	refreshMu sync.Mutex
-	refresh   func(context.Context) (string, string, error)
-	base      *url.URL
-	token     string
-	kind      string
-	http      *http.Client
+	mu          sync.Mutex
+	refreshGate chan struct{}
+	refresh     func(context.Context) (string, string, error)
+	base        *url.URL
+	token       string
+	kind        string
+	http        *http.Client
 }
 
 // NewClient accepts the regional streaming service URL and its gsToken.
@@ -36,7 +36,7 @@ func NewClient(baseURL, token, kind string, client *http.Client) (*Client, error
 	if client == nil {
 		client = &http.Client{Timeout: 15 * time.Second}
 	}
-	return &Client{base: u, token: token, kind: kind, http: client}, nil
+	return &Client{base: u, token: token, kind: kind, http: client, refreshGate: make(chan struct{}, 1)}, nil
 }
 
 type HTTPError struct {
@@ -66,8 +66,12 @@ func (c *Client) requestHeaders(ctx context.Context, method, path string, body a
 	if status != 401 && status != 403 {
 		return status, err
 	}
-	c.refreshMu.Lock()
-	defer c.refreshMu.Unlock()
+	select {
+	case c.refreshGate <- struct{}{}:
+		defer func() { <-c.refreshGate }()
+	case <-ctx.Done():
+		return status, ctx.Err()
+	}
 	c.mu.Lock()
 	current, fn := c.token, c.refresh
 	c.mu.Unlock()

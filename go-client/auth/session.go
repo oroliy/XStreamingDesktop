@@ -8,7 +8,8 @@ import (
 
 // Session serializes refresh-token rotation across home, cloud and transfer requests.
 type Session struct {
-	mu         sync.Mutex
+	gateOnce   sync.Once
+	gate       chan struct{}
 	microsoft  *Client
 	xbox       *XboxClient
 	refresh    string
@@ -16,6 +17,20 @@ type Session struct {
 	storeError func(error)
 	closed     bool
 }
+
+func (s *Session) lock(ctx context.Context) error {
+	s.gateOnce.Do(func() { s.gate = make(chan struct{}, 1) })
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case s.gate <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+func (s *Session) unlock() { <-s.gate }
 
 func NewSession(refresh string) *Session {
 	return &Session{microsoft: NewClient(), xbox: NewXboxClient(), refresh: refresh}
@@ -29,8 +44,8 @@ type TokenStore interface {
 
 // SetStore saves the current token and persists future token rotation.
 func (s *Session) SetStore(store TokenStore, onError func(error)) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	_ = s.lock(context.Background())
+	defer s.unlock()
 	if s.closed {
 		return errors.New("session closed")
 	}
@@ -55,8 +70,8 @@ func (s *Session) rotate(refresh string) {
 
 // Logout prevents further token refresh and removes the persisted credential.
 func (s *Session) Logout() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	_ = s.lock(context.Background())
+	defer s.unlock()
 	s.closed = true
 	s.refresh = ""
 	if s.store != nil {
@@ -65,8 +80,10 @@ func (s *Session) Logout() error {
 	return nil
 }
 func (s *Session) Transfer(ctx context.Context) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if err := s.lock(ctx); err != nil {
+		return "", err
+	}
+	defer s.unlock()
 	if s.refresh == "" {
 		return "", errors.New("missing refresh token")
 	}
@@ -82,12 +99,14 @@ func (s *Session) Transfer(ctx context.Context) (string, error) {
 
 // WebToken obtains an XSTS token for Xbox remote-management APIs.
 func (s *Session) WebToken(ctx context.Context) (XboxToken, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if err := s.lock(ctx); err != nil {
+		return XboxToken{}, err
+	}
+	defer s.unlock()
 	return s.xsts(ctx, "http://xboxlive.com")
 }
 
-// xsts runs under s.mu so refresh token rotation stays serialized.
+// xsts runs under the session gate so refresh token rotation stays serialized.
 func (s *Session) xsts(ctx context.Context, party string) (XboxToken, error) {
 	if s.refresh == "" {
 		return XboxToken{}, errors.New("missing refresh token")
@@ -108,8 +127,10 @@ func (s *Session) xsts(ctx context.Context, party string) (XboxToken, error) {
 
 // StreamingToken refreshes the Microsoft and Xbox credentials and returns the new regional token.
 func (s *Session) StreamingToken(ctx context.Context, kind string) (string, string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if err := s.lock(ctx); err != nil {
+		return "", "", err
+	}
+	defer s.unlock()
 	xsts, err := s.xsts(ctx, "http://gssv.xboxlive.com/")
 	if err != nil {
 		return "", "", err

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestConcurrentTokenRefresh(t *testing.T) {
@@ -54,4 +55,28 @@ func TestRefreshFailureAndRetryLimit(t *testing.T) {
 	if !errors.As(err, &httpErr) || count != 1 {
 		t.Fatal(err, count)
 	}
+}
+
+func TestWaitingForRefreshCanBeCanceled(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(401) }))
+	defer server.Close()
+	client, _ := NewClient(server.URL, "old", "cloud", server.Client())
+	started := make(chan struct{})
+	release := make(chan struct{})
+	first := make(chan error, 1)
+	client.SetRefresh(func(ctx context.Context) (string, string, error) {
+		close(started)
+		<-release
+		return "new", server.URL, nil
+	})
+	go func() { _, err := client.Titles(context.Background()); first <- err }()
+	<-started
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, err := client.Titles(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("got %v", err)
+	}
+	close(release)
+	<-first
 }

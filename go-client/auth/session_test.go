@@ -3,10 +3,12 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestSessionRotatesRefreshToken(t *testing.T) {
@@ -59,9 +61,7 @@ func TestSessionCredentialStorage(t *testing.T) {
 	if err := s.SetStore(store, nil); err != nil || store.value != "initial" {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
 	s.rotate("rotated")
-	s.mu.Unlock()
 	if store.value != "rotated" {
 		t.Fatal("rotation not persisted")
 	}
@@ -97,5 +97,19 @@ func TestWebTokenRelyingParty(t *testing.T) {
 	token, err := s.WebToken(context.Background())
 	if err != nil || token.Token != "web" || len(token.DisplayClaims.XUI) != 1 {
 		t.Fatal(err)
+	}
+}
+
+func TestWaitingForCredentialsCanBeCanceled(t *testing.T) {
+	s := NewSession("refresh")
+	if err := s.lock(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer s.unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := s.Transfer(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("got %v", err)
 	}
 }
