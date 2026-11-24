@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
 	"github.com/pion/webrtc/v4"
@@ -110,5 +111,102 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 	}
 	if stopped.Load() != 1 {
 		t.Fatal("session not stopped exactly once")
+	}
+}
+
+// A provisioning failure must release the remote session even if the caller's context is canceled.
+func TestFailedProvisioningCleansUp(t *testing.T) {
+	var stopped atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v5/sessions/home/play":
+			fmt.Fprint(w, `{"sessionPath":"/v5/sessions/failed"}`)
+		case r.URL.Path == "/v5/sessions/home/failed/state":
+			fmt.Fprint(w, `{"state":"Failed","errorDetails":{"code":"no-capacity"}}`)
+		case r.URL.Path == "/v5/sessions/home/failed" && r.Method == http.MethodDelete:
+			stopped.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client, err := streaming.NewClient(server.URL, "token", "home", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := Start(context.Background(), client, Options{Play: streaming.PlayOptions{Target: "console"}})
+	if err == nil || s != nil {
+		t.Fatalf("unexpected session or error: %v", err)
+	}
+	if stopped.Load() != 1 {
+		t.Fatalf("stopped %d times", stopped.Load())
+	}
+}
+func TestCanceledProvisioningCleansUp(t *testing.T) {
+	var stopped atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v5/sessions/home/play":
+			fmt.Fprint(w, `{"sessionPath":"/v5/sessions/canceled"}`)
+		case r.URL.Path == "/v5/sessions/home/canceled/state":
+			w.WriteHeader(http.StatusNoContent)
+		case r.URL.Path == "/v5/sessions/home/canceled" && r.Method == http.MethodDelete:
+			stopped.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client, err := streaming.NewClient(server.URL, "token", "home", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	s, err := Start(ctx, client, Options{Play: streaming.PlayOptions{Target: "console"}})
+	if s != nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("unexpected result: %v", err)
+	}
+	if stopped.Load() != 1 {
+		t.Fatalf("stopped %d times", stopped.Load())
+	}
+}
+
+func TestSignalingFailureCleansUp(t *testing.T) {
+	var stopped atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v5/sessions/home/play":
+			fmt.Fprint(w, `{"sessionPath":"/v5/sessions/signaling"}`)
+		case r.URL.Path == "/v5/sessions/home/signaling/state":
+			fmt.Fprint(w, `{"state":"Provisioned"}`)
+		case r.URL.Path == "/v5/sessions/home/signaling/sdp" && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusBadGateway)
+		case r.URL.Path == "/v5/sessions/home/signaling" && r.Method == http.MethodDelete:
+			stopped.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client, err := streaming.NewClient(server.URL, "token", "home", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := Start(ctx, client, Options{Play: streaming.PlayOptions{Target: "console"}})
+	var response *streaming.HTTPError
+	if s != nil || !errors.As(err, &response) || response.Status != http.StatusBadGateway {
+		t.Fatalf("unexpected result: %v", err)
+	}
+	if stopped.Load() != 1 {
+		t.Fatalf("stopped %d times", stopped.Load())
 	}
 }
