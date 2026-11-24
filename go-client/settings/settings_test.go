@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -23,5 +24,20 @@ func TestSettingsRoundTrip(t *testing.T) {
 	s.Market = "invalid"
 	if Save(p, s) == nil {
 		t.Fatal("accepted invalid market")
+	}
+}
+
+func TestLegacySettingsGainDefaultVolume(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(p, []byte(`{"resolution":"720p","language":"en-US","market":"US"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(p)
+	if err != nil || got.Volume != 100 || got.ResolutionCode() != 720 {
+		t.Fatal(got, err)
+	}
+	got.Volume = 101
+	if err = got.Validate(); err == nil {
+		t.Fatal("accepted invalid volume")
 	}
 }

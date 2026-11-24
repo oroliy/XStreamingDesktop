@@ -46,6 +46,7 @@ type app struct {
 	filter            string
 	keyboard          controller.Keyboard
 	keyboardEnabled   bool
+	fullscreen        bool
 }
 
 func (a *app) view(c *ui.Context) {
@@ -53,10 +54,20 @@ func (a *app) view(c *ui.Context) {
 		ui.Text(c, "XStreaming").FontSize(32).Bold()
 		ui.Text(c, "Experimental preview — controller and playback support are unverified.")
 		if a.frame != nil {
-			ui.Image(c, a.frame).Width(640).Height(360).Fit(ui.Contain)
+			ui.Image(c, a.frame).FillWidth().Grow(1).Fit(ui.Contain)
 		}
 		if a.streamCancel != nil {
+			label := "Full screen"
+			if a.fullscreen {
+				label = "Exit full screen"
+			}
+			if ui.Button(c.Key("fullscreen"), label).Clicked() && a.win != nil {
+				a.win.ToggleFullScreen()
+			}
 			if ui.Button(c.Key("stop"), "Stop stream").Clicked() {
+				if a.fullscreen && a.win != nil {
+					a.win.SetFullScreen(false)
+				}
 				a.streamCancel()
 				a.streamCancel = nil
 				a.busy = true
@@ -158,6 +169,15 @@ func (a *app) view(c *ui.Context) {
 						a.status = "Unable to save settings: " + err.Error()
 					}
 				}
+			})
+			ui.Row(c).Gap(8).Children(func() {
+				ui.Text(c, "Starting volume")
+				if ui.Slider(c.Key("volume"), &a.prefs.Volume, 0, 100).Label("Starting volume").Width(180).Changed() && a.settingsPath != "" {
+					if err := settings.Save(a.settingsPath, a.prefs); err != nil {
+						a.status = "Unable to save settings: " + err.Error()
+					}
+				}
+				ui.Text(c, fmt.Sprintf("%.0f%%", a.prefs.Volume))
 			})
 			ui.Text(c, "Cloud games").Bold()
 			ui.TextInput(c.Key("search"), &a.filter).Placeholder("Search games").Label("Search games").Width(320)
@@ -346,6 +366,9 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		a.update(func() {
 			a.busy = false
 			a.streamCancel = nil
+			if a.fullscreen && a.win != nil {
+				a.win.SetFullScreen(false)
+			}
 			if stopped {
 				a.status = "Stream stopped."
 			} else {
@@ -373,7 +396,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 			if channels == 0 {
 				channels = 2
 			}
-			player, err := media.NewAudioPlayer(ctx, channels)
+			player, err := media.NewAudioPlayer(ctx, channels, int(prefs.Volume))
 			if err != nil {
 				onError(err)
 				return
@@ -455,6 +478,9 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		a.update(func() {
 			a.busy = false
 			a.streamCancel = nil
+			if a.fullscreen && a.win != nil {
+				a.win.SetFullScreen(false)
+			}
 			if stopped {
 				a.status = "Stream stopped."
 			} else {
@@ -485,6 +511,9 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	a.update(func() {
 		a.busy = false
 		a.streamCancel = nil
+		if a.fullscreen && a.win != nil {
+			a.win.SetFullScreen(false)
+		}
 		a.frame = nil
 		a.keyboardEnabled = false
 		a.keyboard.Set(false, protocol.Gamepad{})
@@ -508,6 +537,8 @@ func main() {
 		}
 		a := &app{ctx: ctx, cancel: cancel, accountCtx: accountCtx, accountCancel: accountCancel, busy: true, prefs: prefs, settingsPath: path}
 		a.win = mygo.NewWindow(mygo.WindowOptions{Title: "XStreaming (Go preview)", Content: ui.View(a.view)})
+		a.win.OnEnterFullScreen(func() { a.fullscreen = true; a.win.Invalidate() })
+		a.win.OnLeaveFullScreen(func() { a.fullscreen = false; a.win.Invalidate() })
 		a.win.OnClosed(a.cancel)
 		go a.restore(prefs)
 	})

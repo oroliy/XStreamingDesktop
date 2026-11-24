@@ -15,7 +15,7 @@ func TestAudioPlayer(t *testing.T) {
 	t.Setenv("SDL_AUDIODRIVER", "dummy")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	p, err := NewAudioPlayer(ctx, 2)
+	p, err := NewAudioPlayer(ctx, 2, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,13 @@ func TestAudioPlayer(t *testing.T) {
 	}
 }
 func TestAudioChannels(t *testing.T) {
-	if _, err := NewAudioPlayer(context.Background(), 3); err == nil {
+	if _, err := NewAudioPlayer(context.Background(), 3, 100); err == nil {
 		t.Fatal("accepted invalid channel count")
+	}
+}
+
+func TestAudioVolume(t *testing.T) {
+	if _, err := NewAudioPlayer(context.Background(), 2, 101); err == nil {
+		t.Fatal("accepted invalid volume")
 	}
 }

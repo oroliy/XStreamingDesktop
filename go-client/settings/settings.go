@@ -5,18 +5,25 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 )
 
 type Settings struct {
-	Resolution string `json:"resolution"`
-	Language   string `json:"language"`
-	Market     string `json:"market"`
+	Resolution string  `json:"resolution"`
+	Language   string  `json:"language"`
+	Market     string  `json:"market"`
+	Volume     float64 `json:"volume"`
 }
 
-func Defaults() Settings { return Settings{Resolution: "1080p", Language: "en-US", Market: "US"} }
+func Defaults() Settings {
+	return Settings{Resolution: "1080p", Language: "en-US", Market: "US", Volume: 100}
+}
 func (s Settings) Validate() error {
+	if math.IsNaN(s.Volume) || math.IsInf(s.Volume, 0) || s.Volume < 0 || s.Volume > 100 {
+		return errors.New("invalid volume")
+	}
 	switch s.Resolution {
 	case "720p", "1080p", "1080p HQ":
 	default:

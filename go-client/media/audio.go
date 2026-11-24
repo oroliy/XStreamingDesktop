@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strconv"
 	"sync"
 
 	"github.com/pion/rtp"
@@ -23,11 +24,14 @@ type AudioPlayer struct {
 	diagnostic *diagnosticTail
 }
 
-func NewAudioPlayer(ctx context.Context, channels uint16) (*AudioPlayer, error) {
+func NewAudioPlayer(ctx context.Context, channels uint16, volume int) (*AudioPlayer, error) {
 	if channels != 1 && channels != 2 {
 		return nil, errors.New("Opus requires one or two channels")
 	}
-	cmd := exec.CommandContext(ctx, "ffplay", "-loglevel", "error", "-nodisp", "-autoexit", "-probesize", "32", "-analyzeduration", "0", "-i", "pipe:0")
+	if volume < 0 || volume > 100 {
+		return nil, errors.New("volume must be between 0 and 100")
+	}
+	cmd := exec.CommandContext(ctx, "ffplay", "-loglevel", "error", "-nodisp", "-autoexit", "-volume", strconv.Itoa(volume), "-probesize", "32", "-analyzeduration", "0", "-i", "pipe:0")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
