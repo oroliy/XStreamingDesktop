@@ -56,7 +56,6 @@ type app struct {
 	streamPowerOff    *atomic.Bool
 	frame             *ui.Bitmap
 	decodedFPS        float64
-	framePending      atomic.Bool
 	cloudGeneration   atomic.Uint64
 	cloudCancel       context.CancelFunc
 	prefs             settings.Settings
@@ -888,6 +887,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		}
 	}
 	var decodedFrames atomic.Uint64
+	var frames frameMailbox
 	track := func(t *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		if t.Kind() == webrtc.RTPCodecTypeAudio {
 			if !strings.EqualFold(t.Codec().MimeType, webrtc.MimeTypeOpus) {
@@ -923,15 +923,10 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 				return
 			}
 			decodedFrames.Add(1)
-			if !a.framePending.CompareAndSwap(false, true) {
-				return
-			}
-			a.update(func() {
-				defer a.framePending.Store(false)
-				if ctx.Err() != nil {
-					return
+			frames.offer(img, a.update, func(frame image.Image) {
+				if ctx.Err() == nil {
+					a.showFrame(frame)
 				}
-				a.showFrame(img)
 			})
 		})
 		if err != nil {
