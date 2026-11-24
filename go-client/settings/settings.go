@@ -13,15 +13,16 @@ import (
 )
 
 type Settings struct {
-	Resolution    string  `json:"resolution"`
-	UILanguage    string  `json:"ui_language"`
-	Language      string  `json:"language"`
-	Market        string  `json:"market"`
-	CloudRegion   string  `json:"cloud_region"`
-	Volume        float64 `json:"volume"`
-	StickDeadzone float64 `json:"stick_deadzone"`
-	PollingRate   string  `json:"polling_rate"`
-	PreferIPv6    bool    `json:"prefer_ipv6"`
+	Resolution       string  `json:"resolution"`
+	UILanguage       string  `json:"ui_language"`
+	Language         string  `json:"language"`
+	Market           string  `json:"market"`
+	CloudRegion      string  `json:"cloud_region"`
+	Volume           float64 `json:"volume"`
+	StickDeadzone    float64 `json:"stick_deadzone"`
+	PollingRate      string  `json:"polling_rate"`
+	PreferIPv6       bool    `json:"prefer_ipv6"`
+	WakeBeforeStream bool    `json:"wake_before_stream"`
 }
 
 // GameLanguages lists locales sent to the streaming and catalog services.

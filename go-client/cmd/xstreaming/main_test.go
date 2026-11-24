@@ -408,3 +408,16 @@ func TestDisconnectAndPowerOffButtonForHomeStream(t *testing.T) {
 	}
 	cancelAccount()
 }
+
+func TestWakeBeforeStreamPreferencePersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	a := &app{prefs: settings.Defaults(), settingsPath: path}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if err := tt.Click("Wake standby console before streaming"); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := settings.Load(path)
+	if err != nil || !saved.WakeBeforeStream {
+		t.Fatalf("setting=%v error=%v", saved.WakeBeforeStream, err)
+	}
+}

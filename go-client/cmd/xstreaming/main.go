@@ -34,6 +34,7 @@ type app struct {
 	busy              bool
 	cancelingLogin    bool
 	status, code, uri string
+	wakeWarning       string
 	consoles          []streaming.Console
 	client            *streaming.Client
 	cloud             *streaming.Client
@@ -89,6 +90,9 @@ func (a *app) view(c *ui.Context) {
 		}
 		if a.status != "" {
 			ui.Text(c, a.tr(a.status))
+		}
+		if a.wakeWarning != "" {
+			ui.Text(c, a.tr(a.wakeWarning))
 		}
 		if a.code != "" {
 			ui.Text(c, a.tr("Visit: ")+a.uri)
@@ -164,6 +168,7 @@ func (a *app) view(c *ui.Context) {
 						a.titles = nil
 						a.cloudStatus = ""
 						a.cloudRegions = nil
+						a.wakeWarning = ""
 						a.status = "Signed out."
 						if err != nil {
 							a.status = "Signed out locally; unable to remove saved login: " + err.Error()
@@ -199,8 +204,10 @@ func (a *app) view(c *ui.Context) {
 						a.streamCancel = cancel
 						a.busy = true
 						a.status = "Starting stream…"
+						a.wakeWarning = ""
 						a.streamHomeID = console.ServerID
-						a.startStreamAsync(ctx, a.client, a.credentials, console.ServerID, a.prefs)
+						wake := a.prefs.WakeBeforeStream && console.PowerState == "ConnectedStandby"
+						a.startStreamAsync(ctx, a.client, a.credentials, console.ServerID, a.prefs, wake)
 					}
 				}
 			}
@@ -245,6 +252,11 @@ func (a *app) view(c *ui.Context) {
 						}
 					}
 				})
+			}
+			if ui.Checkbox(c.Key("wake-before-stream"), &a.prefs.WakeBeforeStream, a.tr("Wake standby console before streaming")).Changed() && a.settingsPath != "" {
+				if err := settings.Save(a.settingsPath, a.prefs); err != nil {
+					a.status = "Unable to save settings: " + err.Error()
+				}
 			}
 			if ui.Checkbox(c.Key("prefer-ipv6"), &a.prefs.PreferIPv6, a.tr("Prefer IPv6 candidates")).Changed() && a.settingsPath != "" {
 				if err := settings.Save(a.settingsPath, a.prefs); err != nil {
@@ -316,8 +328,9 @@ func (a *app) view(c *ui.Context) {
 						a.streamCancel = cancel
 						a.busy = true
 						a.status = "Starting cloud game…"
+						a.wakeWarning = ""
 						a.streamHomeID = ""
-						a.startStreamAsync(ctx, a.cloud, a.credentials, title.TitleID, a.prefs)
+						a.startStreamAsync(ctx, a.cloud, a.credentials, title.TitleID, a.prefs, false)
 					}
 				}
 			}
@@ -721,6 +734,7 @@ func (a *app) stopStream(powerOff bool) {
 	a.busy = true
 	a.frame = nil
 	a.decodedFPS = 0
+	a.wakeWarning = ""
 	a.keyboardEnabled = false
 	a.keyboard.Set(false, protocol.Gamepad{})
 	if powerOff {
@@ -740,19 +754,19 @@ func waitForStreamCleanup(ctx context.Context, done <-chan error) error {
 }
 
 // startStreamAsync is called on the UI thread before shutdown can begin waiting.
-func (a *app) startStreamAsync(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings) {
+func (a *app) startStreamAsync(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings, wakeBefore bool) {
 	a.streamWG.Add(1)
 	done := make(chan error, 1)
 	flag := &atomic.Bool{}
 	a.streamDone, a.streamPowerOff = done, flag
 	go func() {
 		defer a.streamWG.Done()
-		done <- a.startStream(ctx, client, credentials, target, prefs, flag)
+		done <- a.startStream(ctx, client, credentials, target, prefs, flag, wakeBefore)
 		close(done)
 	}()
 }
 
-func (a *app) startStream(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings, powerOff *atomic.Bool) error {
+func (a *app) startStream(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings, powerOff *atomic.Bool, wakeBefore bool) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if err := media.CheckDependencies(); err != nil {
@@ -773,6 +787,24 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 			}
 		})
 		return nil
+	}
+	if wakeBefore {
+		a.update(func() {
+			if ctx.Err() == nil {
+				a.status = "Sending wake request…"
+			}
+		})
+		token, err := credentials.WebToken(ctx)
+		if err == nil {
+			err = remote.NewClient().Wake(ctx, target, token)
+		}
+		if err != nil && ctx.Err() == nil {
+			a.update(func() {
+				if ctx.Err() == nil {
+					a.wakeWarning = "Wake request failed; continuing stream: " + err.Error()
+				}
+			})
+		}
 	}
 	onError := func(err error) {
 		if ctx.Err() == nil {
@@ -1030,6 +1062,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		}
 		a.frame = nil
 		a.decodedFPS = 0
+		a.wakeWarning = ""
 		a.keyboardEnabled = false
 		a.keyboard.Set(false, protocol.Gamepad{})
 		if connectionTimedOut && cleanupErr == nil {
