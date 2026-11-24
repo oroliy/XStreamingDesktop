@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"sync"
 )
 
@@ -196,6 +197,10 @@ func (s *Session) StreamingTokenForRegion(ctx context.Context, kind, regionName 
 	region, err := stream.SelectRegion(regionName)
 	if err != nil {
 		return "", "", names, err
+	}
+	u, err := url.Parse(region.BaseURI)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return "", "", names, errors.New("invalid secure streaming region URL")
 	}
 	return stream.GSToken, region.BaseURI, names, nil
 }

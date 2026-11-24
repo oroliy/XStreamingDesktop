@@ -216,3 +216,30 @@ func TestSessionSelectsCloudRegion(t *testing.T) {
 		t.Fatalf("missing-region error=%v options=%v", err, names)
 	}
 }
+
+func TestSessionRejectsInsecureStreamingRegion(t *testing.T) {
+	region := ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			fmt.Fprint(w, `{"access_token":"access"}`)
+		case "/user":
+			fmt.Fprint(w, `{"Token":"user"}`)
+		case "/xsts":
+			fmt.Fprint(w, `{"Token":"xsts"}`)
+		case "/home":
+			_ = json.NewEncoder(w).Encode(map[string]any{"gsToken": "secret", "offeringSettings": map[string]any{"regions": []Region{{Name: "Test", BaseURI: region, IsDefault: true}}}})
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	s := &Session{refresh: "refresh", microsoft: &Client{endpoint: server.URL + "/oauth", http: server.Client()}, xbox: &XboxClient{http: server.Client(), userURL: server.URL + "/user", xstsURL: server.URL + "/xsts", homeURL: server.URL + "/home"}}
+	for _, candidate := range []string{"http://example.com", "https://user@example.com", "https://example.com/path", "https://example.com/?x=1", "https://example.com/#fragment"} {
+		region = candidate
+		token, address, err := s.StreamingToken(context.Background(), "home")
+		if err == nil || token != "" || address != "" {
+			t.Fatalf("accepted %q: token=%q address=%q err=%v", candidate, token, address, err)
+		}
+	}
+}
