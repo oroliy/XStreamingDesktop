@@ -48,7 +48,20 @@ func ApplyDeadzone(x, y, deadzone float64) (float64, float64) {
 // Run sends up to four connected controllers until ctx is canceled.
 // On disconnect it sends a neutral frame to release held buttons.
 func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChannel, ready <-chan struct{}, keyboard *Keyboard, deadzone float64, pollingRate int, onError func(error), onRecovery func()) error {
-	return run(ctx, sender, channel, ready, keyboard, deadzone, pollingRate, gamepad.Pads, onError, onRecovery)
+	feedback := make(chan protocol.Vibration, 64)
+	channel.OnMessage(func(msg webrtc.DataChannelMessage) {
+		if msg.IsString {
+			return
+		}
+		v, err := protocol.ParseVibration(msg.Data)
+		if err == nil {
+			select {
+			case feedback <- v:
+			default:
+			}
+		}
+	})
+	return runWithFeedback(ctx, sender, channel, ready, keyboard, deadzone, pollingRate, gamepad.Pads, onError, onRecovery, feedback, setPadVibration)
 }
 
 type inputSender interface {
@@ -62,6 +75,10 @@ type inputChannel interface {
 }
 
 func run(ctx context.Context, sender inputSender, channel inputChannel, ready <-chan struct{}, keyboard *Keyboard, deadzone float64, pollingRate int, pads func() []*gamepad.Pad, onError func(error), onRecovery func()) error {
+	return runWithFeedback(ctx, sender, channel, ready, keyboard, deadzone, pollingRate, pads, onError, onRecovery, nil, nil)
+}
+
+func runWithFeedback(ctx context.Context, sender inputSender, channel inputChannel, ready <-chan struct{}, keyboard *Keyboard, deadzone float64, pollingRate int, pads func() []*gamepad.Pad, onError func(error), onRecovery func(), feedback <-chan protocol.Vibration, setMotor func(*gamepad.Pad, float64, float64)) error {
 	select {
 	case <-ctx.Done():
 		return nil
@@ -74,6 +91,8 @@ func run(ctx context.Context, sender inputSender, channel inputChannel, ready <-
 	defer ticker.Stop()
 	initialized := false
 	slots := slotTracker{}
+	rumble := newRumbleManager(setMotor)
+	defer rumble.close()
 	failed := false
 	transitionDelayed := false
 	report := func(err error) {
@@ -107,6 +126,13 @@ func run(ctx context.Context, sender inputSender, channel inputChannel, ready <-
 		select {
 		case <-ctx.Done():
 			return nil
+		case v := <-feedback:
+			for pad, index := range slots.pads {
+				if index == v.Index {
+					rumble.play(v.Index, pad, v)
+					break
+				}
+			}
 		case <-ticker.C:
 			transitionDelayed = false
 			state := channel.ReadyState()
@@ -129,6 +155,7 @@ func run(ctx context.Context, sender inputSender, channel inputChannel, ready <-
 			pads := pads()
 			enabled, virtual := keyboard.Snapshot()
 			added, removed := slots.update(pads, enabled)
+			rumble.reconcile(slots.pads)
 			for _, index := range removed {
 				if !sendTransition(func() error { return sender.SendGamepads([]protocol.Gamepad{{Index: index}}) }) {
 					return nil

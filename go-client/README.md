@@ -1,6 +1,6 @@
 # Go client (early development)
 
-This directory contains an early MyGo migration. The native window is an experimental preview that can initiate home and cloud streaming and display decoded H.264 frames. It reads up to four gamepads with adjustable stick dead zone and polling rate; vibration and other existing features are not implemented. Input, audio and video have not been validated with a real Xbox. Use the original Electron application for streaming.
+This directory contains an early MyGo migration. The native window is an experimental preview that can initiate home and cloud streaming and display decoded H.264 frames. It reads up to four gamepads with adjustable stick dead zone and polling rate. Input, audio and video have not been validated with a real Xbox. Use the original Electron application for streaming.
 
 [中文说明](README.zh_CN.md)
 
@@ -21,7 +21,7 @@ After a connection is established, the client allows 30 seconds for a disconnect
 
 The experimental `media` package can depacketize H.264 RTP and decode H.264 video frames using an `ffmpeg` executable on PATH. The preview UI uses software decoding and transfers uncompressed RGB frames from FFmpeg, avoiding per-frame PNG compression at the cost of greater pipe bandwidth. Streaming latency has not been benchmarked. Opus audio uses `ffplay` and an available audio device, with a small reorder buffer for late packets; audio/video synchronization and latency have not been validated.
 
-The preview reads up to four controllers through MyGo’s gamepad plugin. Linux requires permission to read the relevant `/dev/input` device. Polling-rate changes apply to the next stream; higher rates increase processing and network activity. Rumble is not yet supported.
+The preview reads up to four controllers through MyGo’s gamepad plugin. Linux requires permission to read the relevant `/dev/input` device. Polling-rate changes apply to the next stream; higher rates increase processing and network activity. Windows has experimental XInput dual-motor vibration; it has not been tested on a physical controller. Trigger motors, delayed or repeated effects, and vibration on Linux and macOS are not supported.
 
 Cloud catalog market and language and streaming resolution are configurable in the preview. The catalog reloads automatically after changing market or language. The market affects product metadata, not account entitlement. The cloud streaming region can be selected separately from those returned for the account. The game list supports search and pagination. If a catalog batch fails, successfully loaded names remain visible and other entries use product IDs. Cloud access depends on account entitlements and region.
 
