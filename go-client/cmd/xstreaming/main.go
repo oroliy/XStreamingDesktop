@@ -43,6 +43,7 @@ type app struct {
 	accountCtx        context.Context
 	accountCancel     context.CancelFunc
 	streamCancel      context.CancelFunc
+	streamWG          *sync.WaitGroup
 	frame             *ui.Bitmap
 	framePending      atomic.Bool
 	cloudGeneration   atomic.Uint64
@@ -190,7 +191,7 @@ func (a *app) view(c *ui.Context) {
 						a.streamCancel = cancel
 						a.busy = true
 						a.status = "Starting stream…"
-						go a.startStream(ctx, a.client, a.credentials, console.ServerID, a.prefs)
+						a.startStreamAsync(ctx, a.client, a.credentials, console.ServerID, a.prefs)
 					}
 				}
 			}
@@ -289,7 +290,7 @@ func (a *app) view(c *ui.Context) {
 						a.streamCancel = cancel
 						a.busy = true
 						a.status = "Starting cloud game…"
-						go a.startStream(ctx, a.cloud, a.credentials, title.TitleID, a.prefs)
+						a.startStreamAsync(ctx, a.cloud, a.credentials, title.TitleID, a.prefs)
 					}
 				}
 			}
@@ -622,6 +623,16 @@ func (a *app) showFrame(img image.Image) {
 		a.status = "Streaming video."
 	}
 }
+
+// startStreamAsync is called on the UI thread before shutdown can begin waiting.
+func (a *app) startStreamAsync(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings) {
+	a.streamWG.Add(1)
+	go func() {
+		defer a.streamWG.Done()
+		a.startStream(ctx, client, credentials, target, prefs)
+	}()
+}
+
 func (a *app) startStream(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -914,8 +925,9 @@ func streamEndStatus(failed bool, cleanupErr error) string {
 }
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	var streamWG sync.WaitGroup
 	mygo.App.WhenReady(func() {
-		ctx, cancel := context.WithCancel(context.Background())
 		accountCtx, accountCancel := context.WithCancel(ctx)
 		prefs := settings.Defaults()
 		path, err := settings.Path()
@@ -924,14 +936,32 @@ func main() {
 				prefs = saved
 			}
 		}
-		a := &app{ctx: ctx, cancel: cancel, accountCtx: accountCtx, accountCancel: accountCancel, busy: true, prefs: prefs, settingsPath: path}
+		a := &app{ctx: ctx, cancel: cancel, accountCtx: accountCtx, accountCancel: accountCancel, busy: true, prefs: prefs, settingsPath: path, streamWG: &streamWG}
 		a.win = mygo.NewWindow(mygo.WindowOptions{Title: "XStreaming (Go preview)", Content: ui.View(a.view)})
 		a.win.OnEnterFullScreen(func() { a.fullscreen = true; a.win.Invalidate() })
 		a.win.OnLeaveFullScreen(func() { a.fullscreen = false; a.win.Invalidate() })
 		a.win.OnClosed(a.cancel)
 		go a.restore(accountCtx, prefs)
 	})
-	if err := mygo.App.Run(); err != nil {
+	err := mygo.App.Run()
+	cancel()
+	if !waitForStreams(&streamWG, 7*time.Second) {
+		log.Print("timed out waiting for stream cleanup")
+	}
+	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func waitForStreams(wg *sync.WaitGroup, timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
 	}
 }

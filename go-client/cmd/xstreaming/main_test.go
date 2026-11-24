@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -331,5 +332,17 @@ func TestCloudCatalogPaginationAndSearch(t *testing.T) {
 	tt.Frame()
 	if a.cloudPage != 0 || !tt.HasText("Game 084") || !tt.HasText("Games 1–1 of 1") {
 		t.Fatalf("search did not reset page: page=%d %v", a.cloudPage, tt.Texts())
+	}
+}
+
+func TestWaitForStreams(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	if waitForStreams(&wg, 10*time.Millisecond) {
+		t.Fatal("returned before stream cleanup completed")
+	}
+	wg.Done()
+	if !waitForStreams(&wg, time.Second) {
+		t.Fatal("did not observe completed stream cleanup")
 	}
 }
