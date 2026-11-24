@@ -41,3 +41,11 @@ func TestLibraryAndStop(t *testing.T) {
 		t.Fatal("stop did not cancel active session")
 	}
 }
+
+func TestCloudAccountWithoutHomeClient(t *testing.T) {
+	a := &app{credentials: auth.NewSession("x"), cloudStatus: "3 games", titles: []streaming.Title{{TitleID: "game", Name: "Cloud title"}}}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if tt.HasText("Sign in with Microsoft") || !tt.HasText("Sign out") || !tt.HasText("Cloud title") {
+		t.Fatal(tt.Texts())
+	}
+}

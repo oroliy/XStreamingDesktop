@@ -63,7 +63,7 @@ func (a *app) view(c *ui.Context) {
 			ui.Text(c, "Visit: "+a.uri)
 			ui.Text(c, "Code: "+a.code).FontSize(24).Bold()
 		}
-		if !a.busy && a.code == "" && a.client == nil {
+		if !a.busy && a.code == "" && a.credentials == nil {
 			if ui.PrimaryButton(c, "Sign in with Microsoft").Clicked() {
 				a.busy = true
 				a.status = "Requesting sign-in code…"
@@ -187,26 +187,18 @@ func (a *app) connectAccount(ctx context.Context, refresh string) {
 			}
 		})
 	})
-	token, region, err := credentials.StreamingToken(ctx, "home")
-	if err != nil {
-		if ctx.Err() == nil {
-			a.fail(err)
+
+	token, region, homeErr := credentials.StreamingToken(ctx, "home")
+	var client *streaming.Client
+	var consoles []streaming.Console
+	if homeErr == nil {
+		client, homeErr = streaming.NewClient(region, token, "home", nil)
+		if homeErr == nil {
+			client.SetRefresh(func(ctx context.Context) (string, string, error) { return credentials.StreamingToken(ctx, "home") })
+			consoles, homeErr = client.Consoles(ctx)
 		}
-		return
 	}
-	client, err := streaming.NewClient(region, token, "home", nil)
-	if err != nil {
-		if ctx.Err() == nil {
-			a.fail(err)
-		}
-		return
-	}
-	client.SetRefresh(func(ctx context.Context) (string, string, error) { return credentials.StreamingToken(ctx, "home") })
-	consoles, err := client.Consoles(ctx)
-	if err != nil {
-		if ctx.Err() == nil {
-			a.fail(err)
-		}
+	if ctx.Err() != nil {
 		return
 	}
 	a.update(func() {
@@ -214,14 +206,18 @@ func (a *app) connectAccount(ctx context.Context, refresh string) {
 			return
 		}
 		a.busy = false
-		a.client = client
 		a.credentials = credentials
-		a.consoles = consoles
-		a.status = fmt.Sprintf("Signed in. Found %d console(s).", len(consoles))
+		a.cloudStatus = "Loading cloud games…"
+		if homeErr != nil {
+			a.status = "Home streaming unavailable; checking cloud games."
+		} else {
+			a.client = client
+			a.consoles = consoles
+			a.status = fmt.Sprintf("Signed in. Found %d console(s).", len(consoles))
+		}
 		if persistErr != nil {
 			a.status += " Login could not be saved in the system credential store."
 		}
-		a.cloudStatus = "Loading cloud games…"
 	})
 	go a.loadCloud(ctx, credentials)
 }
