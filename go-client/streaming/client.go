@@ -1,0 +1,130 @@
+// Package streaming implements the Xbox streaming service HTTP protocol.
+package streaming
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+)
+
+type Client struct {
+	base  *url.URL
+	token string
+	kind  string
+	http  *http.Client
+}
+
+// NewClient accepts the regional streaming service URL and its gsToken.
+func NewClient(baseURL, token, kind string, client *http.Client) (*Client, error) {
+	u, err := url.Parse(baseURL)
+	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return nil, fmt.Errorf("invalid streaming service URL")
+	}
+	if token == "" || (kind != "home" && kind != "cloud") {
+		return nil, fmt.Errorf("invalid token or session type")
+	}
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
+	}
+	return &Client{base: u, token: token, kind: kind, http: client}, nil
+}
+
+type HTTPError struct {
+	Status int
+	Body   string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("streaming service returned HTTP %d", e.Status)
+}
+
+func (c *Client) request(ctx context.Context, method, path string, body any, out any) (int, error) {
+	var data io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return 0, err
+		}
+		data = bytes.NewReader(b)
+	}
+	u := *c.base
+	u.Path = path
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), data)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return resp.StatusCode, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return resp.StatusCode, &HTTPError{resp.StatusCode, string(b)}
+	}
+	if out != nil && len(bytes.TrimSpace(b)) > 0 {
+		if err := json.Unmarshal(b, out); err != nil {
+			return resp.StatusCode, fmt.Errorf("decode response: %w", err)
+		}
+	}
+	return resp.StatusCode, nil
+}
+
+func (c *Client) sessionPath(id string) (string, error) {
+	if id == "" || strings.ContainsAny(id, "/?#") || id == "." || id == ".." {
+		return "", fmt.Errorf("invalid session ID")
+	}
+	return "/v5/sessions/" + c.kind + "/" + url.PathEscape(id), nil
+}
+
+// State reads a session's state, polling on HTTP 204 until a response or cancellation.
+func (c *Client) State(ctx context.Context, id string) (json.RawMessage, error) {
+	path, err := c.sessionPath(id)
+	if err != nil {
+		return nil, err
+	}
+	for {
+		var result json.RawMessage
+		status, err := c.request(ctx, http.MethodGet, path+"/state", nil, &result)
+		if err != nil {
+			return nil, err
+		}
+		if status != http.StatusNoContent {
+			return result, nil
+		}
+		t := time.NewTimer(750 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return nil, ctx.Err()
+		case <-t.C:
+		}
+	}
+}
+func (c *Client) Keepalive(ctx context.Context, id string) error {
+	path, err := c.sessionPath(id)
+	if err != nil {
+		return err
+	}
+	_, err = c.request(ctx, http.MethodPost, path+"/keepalive", struct{}{}, nil)
+	return err
+}
+func (c *Client) Stop(ctx context.Context, id string) error {
+	path, err := c.sessionPath(id)
+	if err != nil {
+		return err
+	}
+	_, err = c.request(ctx, http.MethodDelete, path, nil, nil)
+	return err
+}
