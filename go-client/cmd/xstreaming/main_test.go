@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/egoist/mygo/ui"
 	"github.com/oroliy/XStreamingDesktop/go-client/auth"
+	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
 	"github.com/oroliy/XStreamingDesktop/go-client/settings"
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
 	"testing"
@@ -30,10 +31,39 @@ func TestInitialAndLoadingView(t *testing.T) {
 }
 func TestLibraryAndStop(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &app{client: &streaming.Client{}, credentials: auth.NewSession("x"), consoles: []streaming.Console{{ServerID: "123", Name: "Living Room", ConsoleType: "XboxSeriesX", PowerState: "On"}}, titles: []streaming.Title{{TitleID: "game", Name: "Sample Game"}}, streamCancel: cancel}
+	a := &app{client: &streaming.Client{}, credentials: auth.NewSession("x"), consoles: []streaming.Console{{ServerID: "123", Name: "Living Room", ConsoleType: "XboxSeriesX", PowerState: "On"}}, titles: []streaming.Title{{TitleID: "game", Name: "Sample Game"}}}
 	tt := ui.NewTester(a.view, 1024, 768)
-	if !tt.HasText("Living Room (XboxSeriesX) — On") || !tt.HasText("Sample Game") || !tt.HasText("Stop stream") {
+	if !tt.HasText("Living Room (XboxSeriesX) — On") || !tt.HasText("Sample Game") {
 		t.Fatal(tt.Texts())
+	}
+	a.streamCancel = cancel
+	tt.Frame()
+	if !tt.HasText("Stop stream") {
+		t.Fatal(tt.Texts())
+	}
+	if err := tt.Click("Enable keyboard controller"); err != nil {
+		t.Fatal(err)
+	}
+	tt.KeyDown(ui.KeyW)
+	enabled, state := a.keyboard.Snapshot()
+	if !enabled || state.LeftY != -1 {
+		t.Fatalf("keyboard: %+v", state)
+	}
+	tt.KeyUp(ui.KeyW)
+	tt.KeyDown(ui.KeyEnter)
+	_, enter := a.keyboard.Snapshot()
+	if enter.Buttons&protocol.A == 0 || !a.keyboardEnabled {
+		t.Fatal("Enter did not reach controller")
+	}
+	tt.KeyUp(ui.KeyEnter)
+	tt.KeyDown(ui.KeyEscape)
+	if a.keyboardEnabled {
+		t.Fatal("Escape did not release keyboard")
+	}
+	tt.KeyUp(ui.KeyEscape)
+	_, state = a.keyboard.Snapshot()
+	if state.LeftY != 0 {
+		t.Fatal("key release ignored")
 	}
 	if err := tt.Click("Stop stream"); err != nil {
 		t.Fatal(err)

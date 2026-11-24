@@ -32,7 +32,7 @@ func Map(s gamepad.State) protocol.Gamepad {
 
 // Run sends the first connected controller at 60Hz until ctx is canceled.
 // On disconnect it sends a neutral frame to release held buttons.
-func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChannel, ready <-chan struct{}) error {
+func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChannel, ready <-chan struct{}, keyboard *Keyboard) error {
 	select {
 	case <-ctx.Done():
 		return nil
@@ -57,7 +57,8 @@ func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChan
 				initialized = true
 			}
 			pads := gamepad.Pads()
-			if len(pads) == 0 {
+			enabled, virtual := keyboard.Snapshot()
+			if len(pads) == 0 && !enabled {
 				if connected {
 					if err := sender.SendGamepads([]protocol.Gamepad{{}}); err != nil {
 						return err
@@ -66,7 +67,13 @@ func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChan
 				}
 				continue
 			}
-			state := Map(pads[0].State())
+			var state protocol.Gamepad
+			if len(pads) > 0 {
+				state = Map(pads[0].State())
+			}
+			if enabled {
+				state = merge(state, virtual)
+			}
 			if err := sender.SendGamepads([]protocol.Gamepad{state}); err != nil {
 				return err
 			}

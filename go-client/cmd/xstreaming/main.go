@@ -16,6 +16,7 @@ import (
 	"github.com/oroliy/XStreamingDesktop/go-client/catalog"
 	"github.com/oroliy/XStreamingDesktop/go-client/controller"
 	"github.com/oroliy/XStreamingDesktop/go-client/media"
+	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
 	"github.com/oroliy/XStreamingDesktop/go-client/session"
 	"github.com/oroliy/XStreamingDesktop/go-client/settings"
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
@@ -43,6 +44,8 @@ type app struct {
 	prefs             settings.Settings
 	settingsPath      string
 	filter            string
+	keyboard          controller.Keyboard
+	keyboardEnabled   bool
 }
 
 func (a *app) view(c *ui.Context) {
@@ -58,6 +61,8 @@ func (a *app) view(c *ui.Context) {
 				a.streamCancel = nil
 				a.busy = true
 				a.frame = nil
+				a.keyboardEnabled = false
+				a.keyboard.Set(false, protocol.Gamepad{})
 				a.status = "Stopping stream…"
 			}
 		}
@@ -67,6 +72,30 @@ func (a *app) view(c *ui.Context) {
 		if a.code != "" {
 			ui.Text(c, "Visit: "+a.uri)
 			ui.Text(c, "Code: "+a.code).FontSize(24).Bold()
+		}
+		if a.streamCancel != nil {
+			label := "Enable keyboard controller"
+			if a.keyboardEnabled {
+				label = "Disable keyboard controller"
+			}
+			if ui.Button(c.Key("keyboard"), label).Clicked() {
+				a.keyboardEnabled = !a.keyboardEnabled
+			}
+			if a.keyboardEnabled {
+				a.keyboard.Set(true, controller.MapKeys(c.KeyDown))
+				ui.Box(c.Key("keyboard-capture")).Focusable().AutoFocus().Label("Keyboard controller").HandleInput(func(ev ui.InputEvent) bool {
+					if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEscape {
+						a.keyboardEnabled = false
+						a.keyboard.Set(false, protocol.Gamepad{})
+					}
+					return ev.Kind == ui.InputKeyDown || ev.Kind == ui.InputKeyUp
+				}).Children(func() {
+					ui.Text(c, "WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable")
+				})
+			} else {
+				a.keyboard.Set(false, protocol.Gamepad{})
+			}
+			return
 		}
 		if !a.busy && a.code == "" && a.credentials == nil {
 			if ui.PrimaryButton(c, "Sign in with Microsoft").Clicked() {
@@ -411,7 +440,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		return
 	}
 	go func() {
-		if err := controller.Run(ctx, s.Input(), s.InputChannel(), s.Ready()); err != nil {
+		if err := controller.Run(ctx, s.Input(), s.InputChannel(), s.Ready(), &a.keyboard); err != nil {
 			onError(err)
 		}
 	}()
@@ -433,6 +462,8 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		a.busy = false
 		a.streamCancel = nil
 		a.frame = nil
+		a.keyboardEnabled = false
+		a.keyboard.Set(false, protocol.Gamepad{})
 		if failed {
 			a.status = "Connection failed; please retry."
 		} else {

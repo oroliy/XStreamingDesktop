@@ -24,3 +24,5 @@ Cloud catalog market and language and streaming resolution are configurable in t
 Login persistence uses MyGo Secrets (Keychain, Windows Credential Manager or Linux Secret Service). If unavailable, sign-in works for the current run without persistence.
 
 GitHub Actions uploads unsigned preview binaries as short-lived workflow artifacts for supported targets. They do not include FFmpeg or ffplay. On macOS and Linux, run `chmod +x xstreaming` after extracting the artifact.
+
+During a stream, keyboard gamepad mode can be enabled manually. WASD and TFGH control the sticks, IJKL the face buttons, arrow keys the D-pad, 1/4 triggers, 2/3 shoulders; Esc disables keyboard mode.
