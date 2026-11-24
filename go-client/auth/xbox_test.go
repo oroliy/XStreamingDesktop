@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 )
 
@@ -67,5 +68,34 @@ func TestXboxError(t *testing.T) {
 	var service *ServiceError
 	if !errors.As(err, &service) || service.Status != 401 || service.XErr != 2148916233 {
 		t.Fatal(err)
+	}
+}
+
+func TestStreamingRegionSelection(t *testing.T) {
+	var token StreamingToken
+	token.OfferingSettings.Regions = []Region{
+		{Name: "East", BaseURI: "https://east.example", IsDefault: true},
+		{Name: "West", BaseURI: "https://west.example"},
+		{Name: "Broken"},
+	}
+	if r, err := token.SelectRegion(""); err != nil || r.Name != "East" {
+		t.Fatalf("default: %+v %v", r, err)
+	}
+	if r, err := token.SelectRegion("West"); err != nil || r.BaseURI != "https://west.example" {
+		t.Fatalf("selected: %+v %v", r, err)
+	}
+	if _, err := token.SelectRegion("https://other.example"); err == nil {
+		t.Fatal("accepted an unlisted region")
+	}
+	if got := token.RegionNames(); !reflect.DeepEqual(got, []string{"East", "West"}) {
+		t.Fatal(got)
+	}
+	token.OfferingSettings.Regions = []Region{{Name: "Only", BaseURI: "https://only.example"}}
+	if r, err := token.SelectRegion(""); err != nil || r.Name != "Only" {
+		t.Fatalf("single region: %+v %v", r, err)
+	}
+	token.OfferingSettings.Regions = append(token.OfferingSettings.Regions, Region{Name: "Other", BaseURI: "https://other.example"})
+	if _, err := token.SelectRegion(""); err == nil {
+		t.Fatal("accepted ambiguous regions without a default")
 	}
 }

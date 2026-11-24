@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -360,5 +361,12 @@ func TestDecodedFrameRate(t *testing.T) {
 	tt := ui.NewTester(a.view, 1024, 768)
 	if !tt.HasText("视频解码：59.5 帧/秒") {
 		t.Fatal(tt.Texts())
+	}
+}
+
+func TestCloudRegionOptionsKeepUnavailableSelection(t *testing.T) {
+	got := cloudRegionOptions([]string{"East", "East", "West"}, "Gone")
+	if !reflect.DeepEqual(got, []string{"Automatic", "East", "West", "Gone"}) {
+		t.Fatal(got)
 	}
 }

@@ -39,6 +39,7 @@ type app struct {
 	cloud             *streaming.Client
 	titles            []streaming.Title
 	cloudStatus       string
+	cloudRegions      []string
 	credentials       *auth.Session
 	accountCtx        context.Context
 	accountCancel     context.CancelFunc
@@ -164,6 +165,7 @@ func (a *app) view(c *ui.Context) {
 						a.consoles = nil
 						a.titles = nil
 						a.cloudStatus = ""
+						a.cloudRegions = nil
 						a.status = "Signed out."
 						if err != nil {
 							a.status = "Signed out locally; unable to remove saved login: " + err.Error()
@@ -223,6 +225,23 @@ func (a *app) view(c *ui.Context) {
 					}
 				}
 			})
+			if a.credentials != nil {
+				ui.Row(c).Gap(8).Children(func() {
+					ui.Text(c, a.tr("Cloud region"))
+					if ui.Select(c.Key("cloud-region"), &a.prefs.CloudRegion, cloudRegionOptions(a.cloudRegions, a.prefs.CloudRegion)).Changed() {
+						if a.settingsPath != "" {
+							if err := settings.Save(a.settingsPath, a.prefs); err != nil {
+								a.status = "Unable to save settings: " + err.Error()
+							}
+						}
+						if a.accountCtx != nil && a.accountCtx.Err() == nil {
+							a.cloud = nil
+							a.titles = nil
+							a.startCloudLoad(a.accountCtx, a.credentials, a.prefs)
+						}
+					}
+				})
+			}
 			if ui.Checkbox(c.Key("prefer-ipv6"), &a.prefs.PreferIPv6, a.tr("Prefer IPv6 candidates")).Changed() && a.settingsPath != "" {
 				if err := settings.Save(a.settingsPath, a.prefs); err != nil {
 					a.status = "Unable to save settings: " + err.Error()
@@ -499,7 +518,18 @@ func (a *app) startCloudLoad(ctx context.Context, credentials *auth.Session, pre
 }
 
 func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs settings.Settings, generation uint64) {
-	token, region, err := credentials.StreamingToken(ctx, "cloud")
+	selectedRegion := prefs.CloudRegion
+	if selectedRegion == "Automatic" {
+		selectedRegion = ""
+	}
+	token, region, regions, err := credentials.StreamingTokenForRegion(ctx, "cloud", selectedRegion)
+	if len(regions) > 0 {
+		a.update(func() {
+			if ctx.Err() == nil && a.cloudGeneration.Load() == generation {
+				a.cloudRegions = regions
+			}
+		})
+	}
 	if err != nil {
 		a.update(func() {
 			if ctx.Err() == nil && a.cloudGeneration.Load() == generation {
@@ -517,7 +547,10 @@ func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs se
 		})
 		return
 	}
-	client.SetRefresh(func(ctx context.Context) (string, string, error) { return credentials.StreamingToken(ctx, "cloud") })
+	client.SetRefresh(func(ctx context.Context) (string, string, error) {
+		token, region, _, err := credentials.StreamingTokenForRegion(ctx, "cloud", selectedRegion)
+		return token, region, err
+	})
 	titles, err := client.Titles(ctx)
 	if err != nil {
 		a.update(func() {
@@ -545,6 +578,18 @@ func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs se
 		}
 	})
 }
+func cloudRegionOptions(regions []string, selected string) []string {
+	options := []string{"Automatic"}
+	seen := map[string]bool{"Automatic": true}
+	for _, name := range append(append([]string(nil), regions...), selected) {
+		if name != "" && !seen[name] {
+			options = append(options, name)
+			seen[name] = true
+		}
+	}
+	return options
+}
+
 func filterCloudTitles(titles []streaming.Title, filter string) []streaming.Title {
 	filter = strings.ToLower(strings.TrimSpace(filter))
 	matches := make([]streaming.Title, 0, len(titles))

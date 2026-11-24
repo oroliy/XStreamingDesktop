@@ -158,24 +158,30 @@ func (s *Session) xsts(ctx context.Context, party string) (XboxToken, error) {
 
 // StreamingToken refreshes the Microsoft and Xbox credentials and returns the new regional token.
 func (s *Session) StreamingToken(ctx context.Context, kind string) (string, string, error) {
+	token, region, _, err := s.StreamingTokenForRegion(ctx, kind, "")
+	return token, region, err
+}
+
+// StreamingTokenForRegion selects a named region supplied by the service, or its default.
+func (s *Session) StreamingTokenForRegion(ctx context.Context, kind, regionName string) (string, string, []string, error) {
 	if err := s.lock(ctx); err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 	defer s.unlock()
 	xsts, err := s.xsts(ctx, "http://gssv.xboxlive.com/")
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 	offering := "xhome"
 	if kind == "cloud" {
 		offering = "xgpuweb"
 	} else if kind != "home" {
-		return "", "", errors.New("invalid streaming type")
+		return "", "", nil, errors.New("invalid streaming type")
 	}
 	stream, err := s.xbox.Streaming(ctx, xsts.Token, offering)
 	if err != nil && kind == "cloud" {
 		if ctx.Err() != nil {
-			return "", "", ctx.Err()
+			return "", "", nil, ctx.Err()
 		}
 		paidErr := err
 		stream, err = s.xbox.Streaming(ctx, xsts.Token, "xgpuwebf2p")
@@ -184,11 +190,12 @@ func (s *Session) StreamingToken(ctx context.Context, kind string) (string, stri
 		}
 	}
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
-	region, err := stream.DefaultRegion()
+	names := stream.RegionNames()
+	region, err := stream.SelectRegion(regionName)
 	if err != nil {
-		return "", "", err
+		return "", "", names, err
 	}
-	return stream.GSToken, region.BaseURI, nil
+	return stream.GSToken, region.BaseURI, names, nil
 }

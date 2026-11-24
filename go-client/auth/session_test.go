@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -185,5 +186,33 @@ func TestCloudFallbackPreservesBothFailures(t *testing.T) {
 	_, _, err := s.StreamingToken(context.Background(), "cloud")
 	if err == nil || !strings.Contains(err.Error(), "subscription cloud: Xbox authentication returned HTTP 503") || !strings.Contains(err.Error(), "free-to-play cloud: Xbox authentication returned HTTP 403") || freeCalls.Load() != 1 {
 		t.Fatalf("missing cloud failure details: %v", err)
+	}
+}
+
+func TestSessionSelectsCloudRegion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			fmt.Fprint(w, `{"access_token":"access"}`)
+		case "/user":
+			fmt.Fprint(w, `{"Token":"user"}`)
+		case "/xsts":
+			fmt.Fprint(w, `{"Token":"xsts"}`)
+		case "/cloud":
+			fmt.Fprint(w, `{"gsToken":"gs","offeringSettings":{"regions":[{"name":"East","baseUri":"https://east.example","isDefault":true},{"name":"West","baseUri":"https://west.example"}]}}`)
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	s := &Session{refresh: "refresh", microsoft: &Client{endpoint: server.URL + "/oauth", http: server.Client()}, xbox: &XboxClient{http: server.Client(), userURL: server.URL + "/user", xstsURL: server.URL + "/xsts", cloudURL: server.URL + "/cloud"}}
+	token, region, names, err := s.StreamingTokenForRegion(context.Background(), "cloud", "West")
+	if err != nil || token != "gs" || region != "https://west.example" || !reflect.DeepEqual(names, []string{"East", "West"}) {
+		t.Fatalf("region=%q names=%v error=%v", region, names, err)
+	}
+	_, _, names, err = s.StreamingTokenForRegion(context.Background(), "cloud", "Gone")
+	if err == nil || len(names) != 2 {
+		t.Fatalf("missing-region error=%v options=%v", err, names)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 type Settings struct {
@@ -16,6 +17,7 @@ type Settings struct {
 	UILanguage    string  `json:"ui_language"`
 	Language      string  `json:"language"`
 	Market        string  `json:"market"`
+	CloudRegion   string  `json:"cloud_region"`
 	Volume        float64 `json:"volume"`
 	StickDeadzone float64 `json:"stick_deadzone"`
 	PollingRate   string  `json:"polling_rate"`
@@ -33,7 +35,7 @@ func CatalogMarkets() []string {
 }
 
 func Defaults() Settings {
-	return Settings{Resolution: "1080p", UILanguage: "English", Language: "en-US", Market: "US", Volume: 100, StickDeadzone: 10, PollingRate: "60 Hz"}
+	return Settings{Resolution: "1080p", UILanguage: "English", Language: "en-US", Market: "US", CloudRegion: "Automatic", Volume: 100, StickDeadzone: 10, PollingRate: "60 Hz"}
 }
 func (s Settings) Validate() error {
 	if s.UILanguage != "English" && s.UILanguage != "简体中文" {
@@ -60,6 +62,9 @@ func (s Settings) Validate() error {
 	}
 	if !slices.Contains(CatalogMarkets(), s.Market) {
 		return errors.New("invalid market")
+	}
+	if s.CloudRegion == "" || len(s.CloudRegion) > 128 || strings.TrimSpace(s.CloudRegion) != s.CloudRegion || strings.ContainsAny(s.CloudRegion, "\r\n") {
+		return errors.New("invalid cloud region")
 	}
 	return nil
 }

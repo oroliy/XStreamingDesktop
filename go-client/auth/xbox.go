@@ -53,6 +53,43 @@ func (t StreamingToken) DefaultRegion() (Region, error) {
 	return Region{}, errors.New("streaming token has no default region")
 }
 
+// SelectRegion chooses only a region returned in the current token.
+// An empty name selects the service default, or its sole available region.
+func (t StreamingToken) SelectRegion(name string) (Region, error) {
+	var available []Region
+	for _, r := range t.OfferingSettings.Regions {
+		if r.Name == "" || r.BaseURI == "" {
+			continue
+		}
+		available = append(available, r)
+		if name != "" && r.Name == name {
+			return r, nil
+		}
+	}
+	if name != "" {
+		return Region{}, fmt.Errorf("streaming region %q is unavailable", name)
+	}
+	if r, err := t.DefaultRegion(); err == nil {
+		return r, nil
+	}
+	if len(available) == 1 {
+		return available[0], nil
+	}
+	return Region{}, errors.New("streaming token has no default region")
+}
+
+func (t StreamingToken) RegionNames() []string {
+	seen := map[string]bool{}
+	var names []string
+	for _, r := range t.OfferingSettings.Regions {
+		if r.Name != "" && r.BaseURI != "" && !seen[r.Name] {
+			seen[r.Name] = true
+			names = append(names, r.Name)
+		}
+	}
+	return names
+}
+
 type ServiceError struct {
 	Status  int
 	XErr    int64
