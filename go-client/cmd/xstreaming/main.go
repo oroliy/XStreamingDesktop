@@ -45,6 +45,7 @@ type app struct {
 	streamCancel      context.CancelFunc
 	streamWG          *sync.WaitGroup
 	frame             *ui.Bitmap
+	decodedFPS        float64
 	framePending      atomic.Bool
 	cloudGeneration   atomic.Uint64
 	cloudCancel       context.CancelFunc
@@ -63,6 +64,7 @@ func (a *app) view(c *ui.Context) {
 		ui.Text(c, a.tr("Experimental preview — controller and playback support are unverified."))
 		if a.frame != nil {
 			ui.Image(c, a.frame).FillWidth().Grow(1).Fit(ui.Contain)
+			ui.Text(c, fmt.Sprintf(a.tr("Decoded video: %.1f FPS"), a.decodedFPS))
 		}
 		if a.streamCancel != nil {
 			label := "Full screen"
@@ -80,6 +82,7 @@ func (a *app) view(c *ui.Context) {
 				a.streamCancel = nil
 				a.busy = true
 				a.frame = nil
+				a.decodedFPS = 0
 				a.keyboardEnabled = false
 				a.keyboard.Set(false, protocol.Gamepad{})
 				a.status = "Stopping stream…"
@@ -661,6 +664,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 			})
 		}
 	}
+	var decodedFrames atomic.Uint64
 	track := func(t *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		if t.Kind() == webrtc.RTPCodecTypeAudio {
 			if !strings.EqualFold(t.Codec().MimeType, webrtc.MimeTypeOpus) {
@@ -692,7 +696,11 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 			return
 		}
 		decoder, err := media.NewVideoDecoder(ctx, func(img image.Image) {
-			if ctx.Err() != nil || !a.framePending.CompareAndSwap(false, true) {
+			if ctx.Err() != nil {
+				return
+			}
+			decodedFrames.Add(1)
+			if !a.framePending.CompareAndSwap(false, true) {
 				return
 			}
 			a.update(func() {
@@ -807,6 +815,34 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		return
 	}
 	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		lastTime, lastCount := time.Now(), decodedFrames.Load()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-s.Done():
+				return
+			case now := <-ticker.C:
+				count := decodedFrames.Load()
+				fps := decodedFrameRate(lastCount, count, now.Sub(lastTime))
+				lastCount, lastTime = count, now
+				a.update(func() {
+					if ctx.Err() != nil {
+						return
+					}
+					select {
+					case <-s.Done():
+						return
+					default:
+					}
+					a.decodedFPS = fps
+				})
+			}
+		}
+	}()
+	go func() {
 		select {
 		case <-ctx.Done():
 			return
@@ -865,6 +901,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 			a.win.SetFullScreen(false)
 		}
 		a.frame = nil
+		a.decodedFPS = 0
 		a.keyboardEnabled = false
 		a.keyboard.Set(false, protocol.Gamepad{})
 		if connectionTimedOut && cleanupErr == nil {
@@ -875,6 +912,13 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 			a.status = streamEndStatus(failed, cleanupErr)
 		}
 	})
+}
+
+func decodedFrameRate(previous, current uint64, elapsed time.Duration) float64 {
+	if current < previous || elapsed <= 0 {
+		return 0
+	}
+	return float64(current-previous) / elapsed.Seconds()
 }
 
 // monitorControllerReady reports a delayed handshake without interrupting video.

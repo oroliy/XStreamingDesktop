@@ -346,3 +346,19 @@ func TestWaitForStreams(t *testing.T) {
 		t.Fatal("did not observe completed stream cleanup")
 	}
 }
+
+func TestDecodedFrameRate(t *testing.T) {
+	if fps := decodedFrameRate(10, 100, 1500*time.Millisecond); fps != 60 {
+		t.Fatalf("got %v FPS", fps)
+	}
+	if decodedFrameRate(100, 10, time.Second) != 0 || decodedFrameRate(0, 10, 0) != 0 {
+		t.Fatal("invalid frame rate interval")
+	}
+	prefs := settings.Defaults()
+	prefs.UILanguage = "简体中文"
+	a := &app{prefs: prefs, frame: ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 1, 1))), decodedFPS: 59.5}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if !tt.HasText("视频解码：59.5 帧/秒") {
+		t.Fatal(tt.Texts())
+	}
+}

@@ -27,7 +27,7 @@ GitHub Actions uploads unsigned preview binaries as short-lived workflow artifac
 
 During a stream, keyboard gamepad mode can be enabled manually. WASD and TFGH control the sticks, IJKL the face buttons, arrow keys the D-pad, 1/4 triggers, 2/3 shoulders; Esc disables keyboard mode.
 
-The stream view offers a full-screen toggle. Starting volume is configurable before a stream; changes apply to the next stream.
+The stream view offers a full-screen toggle and displays decoded video frames per second (which may differ from rendered frames). Starting volume is configurable before a stream; changes apply to the next stream.
 
 The console list can send a wake request through Xbox remote management. The console must allow remote management, and an accepted request does not guarantee it has powered on. This flow has not been tested with a real Xbox.
 
