@@ -558,9 +558,9 @@ func TestHideControlsInSmallWindow(t *testing.T) {
 func TestHiddenControlsShowConnectionProblems(t *testing.T) {
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	a := &app{prefs: settings.Defaults(), streamCancel: cancel, controlsHidden: true, status: "Connection interrupted…", wakeWarning: "Wake request failed; continuing stream: unavailable"}
+	a := &app{prefs: settings.Defaults(), streamCancel: cancel, controlsHidden: true, status: "Connection interrupted…", wakeWarning: "Wake request failed; continuing stream: unavailable", inputWarning: "Controller input interrupted; retrying…"}
 	tt := ui.NewTester(a.view, 640, 480)
-	if !tt.HasText(a.status) || !tt.HasText(a.wakeWarning) {
+	if !tt.HasText(a.status) || !tt.HasText(a.wakeWarning) || !tt.HasText(a.inputWarning) {
 		t.Fatalf("missing stream warnings: %v", tt.Texts())
 	}
 	a.status = "Streaming video."

@@ -10,6 +10,7 @@ var chinese = map[string]string{
 	"Hide controls": "收起控制栏", "Show controls": "显示控制栏",
 	"Enable microphone": "启用麦克风", "Disable microphone": "关闭麦克风", "Starting microphone…": "正在启动麦克风…", "Microphone on.": "麦克风已开启。", "Stopping microphone…": "正在关闭麦克风…",
 	"Connection did not recover; please retry.": "连接未能恢复，请重试。",
+	"Controller input interrupted; retrying…":   "手柄输入中断，正在重试…",
 	"Open Microsoft sign-in page":               "打开微软登录页面", "Enable keyboard controller": "启用键盘手柄", "Disable keyboard controller": "停用键盘手柄",
 	"WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable": "WASD：左摇杆 · TFGH：右摇杆 · IJKL：面键 · 方向键：方向键 · Esc：退出",
 	"Sign-in expired; please sign in again.":                                              "登录信息已失效，请重新登录。", "Sign in with Microsoft": "使用微软账号登录", "Sign out": "退出登录", "Consoles": "主机", "Refresh consoles": "刷新主机", "Wake console": "唤醒主机", "Power off console": "关闭主机", "Start stream": "开始串流",

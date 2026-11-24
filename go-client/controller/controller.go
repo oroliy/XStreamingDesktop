@@ -3,6 +3,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"math"
 	"time"
 
@@ -46,7 +47,21 @@ func ApplyDeadzone(x, y, deadzone float64) (float64, float64) {
 
 // Run sends up to four connected controllers until ctx is canceled.
 // On disconnect it sends a neutral frame to release held buttons.
-func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChannel, ready <-chan struct{}, keyboard *Keyboard, deadzone float64, pollingRate int) error {
+func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChannel, ready <-chan struct{}, keyboard *Keyboard, deadzone float64, pollingRate int, onError func(error), onRecovery func()) error {
+	return run(ctx, sender, channel, ready, keyboard, deadzone, pollingRate, gamepad.Pads, onError, onRecovery)
+}
+
+type inputSender interface {
+	Init(uint8) error
+	SendGamepads([]protocol.Gamepad) error
+	GamepadChanged(uint8, bool) error
+}
+
+type inputChannel interface {
+	ReadyState() webrtc.DataChannelState
+}
+
+func run(ctx context.Context, sender inputSender, channel inputChannel, ready <-chan struct{}, keyboard *Keyboard, deadzone float64, pollingRate int, pads func() []*gamepad.Pad, onError func(error), onRecovery func()) error {
 	select {
 	case <-ctx.Done():
 		return nil
@@ -59,35 +74,77 @@ func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChan
 	defer ticker.Stop()
 	initialized := false
 	slots := slotTracker{}
+	failed := false
+	transitionDelayed := false
+	report := func(err error) {
+		if !failed && onError != nil {
+			onError(err)
+		}
+		failed = true
+	}
+	recovered := func() {
+		if failed && onRecovery != nil {
+			onRecovery()
+		}
+		failed = false
+	}
+	sendTransition := func(send func() error) bool {
+		for ctx.Err() == nil {
+			if err := send(); err == nil {
+				recovered()
+				return true
+			} else {
+				transitionDelayed = true
+				report(err)
+			}
+			if !waitRetry(ctx) {
+				return false
+			}
+		}
+		return false
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			if channel.ReadyState() != webrtc.DataChannelStateOpen {
+			transitionDelayed = false
+			state := channel.ReadyState()
+			if state == webrtc.DataChannelStateClosing || state == webrtc.DataChannelStateClosed {
+				report(errors.New("controller input channel closed"))
+				if !waitRetry(ctx) {
+					return nil
+				}
+				continue
+			}
+			if state != webrtc.DataChannelStateOpen {
 				continue
 			}
 			if !initialized {
-				if err := sender.Init(0); err != nil {
-					return err
+				if !sendTransition(func() error { return sender.Init(0) }) {
+					return nil
 				}
 				initialized = true
 			}
-			pads := gamepad.Pads()
+			pads := pads()
 			enabled, virtual := keyboard.Snapshot()
 			added, removed := slots.update(pads, enabled)
 			for _, index := range removed {
-				if err := sender.SendGamepads([]protocol.Gamepad{{Index: index}}); err != nil {
-					return err
+				if !sendTransition(func() error { return sender.SendGamepads([]protocol.Gamepad{{Index: index}}) }) {
+					return nil
 				}
-				if err := sender.GamepadChanged(index, false); err != nil {
-					return err
+				if !sendTransition(func() error { return sender.GamepadChanged(index, false) }) {
+					return nil
 				}
 			}
 			for _, index := range added {
-				if err := sender.GamepadChanged(index, true); err != nil {
-					return err
+				if !sendTransition(func() error { return sender.GamepadChanged(index, true) }) {
+					return nil
 				}
+			}
+			// State may have changed while a transition was being retried.
+			if transitionDelayed {
+				continue
 			}
 			frames := make([]protocol.Gamepad, 0, 4)
 			for _, pad := range pads {
@@ -118,9 +175,25 @@ func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChan
 			}
 			if len(frames) > 0 {
 				if err := sender.SendGamepads(frames); err != nil {
-					return err
+					report(err)
+					if !waitRetry(ctx) {
+						return nil
+					}
+				} else {
+					recovered()
 				}
 			}
 		}
+	}
+}
+
+func waitRetry(ctx context.Context) bool {
+	timer := time.NewTimer(250 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }

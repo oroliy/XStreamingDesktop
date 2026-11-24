@@ -50,6 +50,7 @@ type app struct {
 	streamCtx         context.Context
 	streamConnected   bool
 	inputReady        bool
+	inputWarning      string
 	micSession        *session.Session
 	micCtx            context.Context
 	micCancel         context.CancelFunc
@@ -90,6 +91,9 @@ func (a *app) view(c *ui.Context) {
 			}
 			if a.micStatus != "" {
 				ui.Text(c, a.tr(a.micStatus))
+			}
+			if a.inputWarning != "" {
+				ui.Text(c, a.tr(a.inputWarning))
 			}
 			if ui.Button(c.Key("show-stream-controls"), a.tr("Show controls")).Clicked() {
 				a.controlsHidden = false
@@ -147,6 +151,9 @@ func (a *app) view(c *ui.Context) {
 		}
 		if a.wakeWarning != "" {
 			ui.Text(c, a.tr(a.wakeWarning))
+		}
+		if a.inputWarning != "" {
+			ui.Text(c, a.tr(a.inputWarning))
 		}
 		if a.code != "" {
 			ui.Text(c, a.tr("Visit: ")+a.uri)
@@ -885,6 +892,7 @@ func (a *app) stopStream(powerOff bool) {
 	a.controlsHidden = false
 	a.streamConnected = false
 	a.inputReady = false
+	a.inputWarning = ""
 	a.consoleText, a.textStatus, a.textSending = "", "", false
 	a.busy = true
 	a.frame = nil
@@ -1214,7 +1222,28 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		})
 	}()
 	go func() {
-		if err := controller.Run(ctx, s.Input(), s.InputChannel(), s.Ready(), &a.keyboard, prefs.StickDeadzone/100, prefs.PollingRateHz()); err != nil {
+		inputCtx, cancelInput := context.WithCancel(ctx)
+		defer cancelInput()
+		go func() {
+			select {
+			case <-s.Done():
+				cancelInput()
+			case <-inputCtx.Done():
+			}
+		}()
+		notifyInput := func(failed bool) {
+			a.update(func() {
+				if inputCtx.Err() != nil {
+					return
+				}
+				if failed {
+					a.inputWarning = "Controller input interrupted; retrying…"
+				} else {
+					a.inputWarning = ""
+				}
+			})
+		}
+		if err := controller.Run(inputCtx, s.Input(), s.InputChannel(), s.Ready(), &a.keyboard, prefs.StickDeadzone/100, prefs.PollingRateHz(), func(error) { notifyInput(true) }, func() { notifyInput(false) }); err != nil {
 			onError(err)
 		}
 	}()
@@ -1249,6 +1278,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		a.decodedFPS = 0
 		a.streamConnected = false
 		a.inputReady = false
+		a.inputWarning = ""
 		a.wakeWarning = ""
 		a.keyboardEnabled = false
 		a.keyboard.Set(false, protocol.Gamepad{})
