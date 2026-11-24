@@ -65,7 +65,8 @@ func TestVibrationFeedbackOverLocalDataChannel(t *testing.T) {
 		t.Fatal(err)
 	}
 	select {
-	case v := <-feedback:
+	case message := <-feedback:
+		v := message.value
 		if v.Index != 2 || v.LeftMotor != 0.8 || v.RightMotor != 0.3 || v.Duration != 100*time.Millisecond {
 			t.Fatalf("unexpected vibration: %+v", v)
 		}

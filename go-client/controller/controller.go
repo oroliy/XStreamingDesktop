@@ -52,11 +52,16 @@ func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChan
 	return runWithFeedback(ctx, sender, channel, ready, keyboard, deadzone, pollingRate, gamepad.Pads, onError, onRecovery, feedback, setPadVibration)
 }
 
-func vibrationFeedback(channel *webrtc.DataChannel, enabled bool) <-chan protocol.Vibration {
+type vibrationMessage struct {
+	value    protocol.Vibration
+	received time.Time
+}
+
+func vibrationFeedback(channel *webrtc.DataChannel, enabled bool) <-chan vibrationMessage {
 	if !enabled {
 		return nil
 	}
-	feedback := make(chan protocol.Vibration, 64)
+	feedback := make(chan vibrationMessage, 64)
 	channel.OnMessage(func(msg webrtc.DataChannelMessage) {
 		if msg.IsString {
 			return
@@ -64,7 +69,7 @@ func vibrationFeedback(channel *webrtc.DataChannel, enabled bool) <-chan protoco
 		v, err := protocol.ParseVibration(msg.Data)
 		if err == nil {
 			select {
-			case feedback <- v:
+			case feedback <- vibrationMessage{value: v, received: time.Now()}:
 			default:
 			}
 		}
@@ -86,7 +91,7 @@ func run(ctx context.Context, sender inputSender, channel inputChannel, ready <-
 	return runWithFeedback(ctx, sender, channel, ready, keyboard, deadzone, pollingRate, pads, onError, onRecovery, nil, nil)
 }
 
-func runWithFeedback(ctx context.Context, sender inputSender, channel inputChannel, ready <-chan struct{}, keyboard *Keyboard, deadzone float64, pollingRate int, pads func() []*gamepad.Pad, onError func(error), onRecovery func(), feedback <-chan protocol.Vibration, setMotor func(*gamepad.Pad, float64, float64)) error {
+func runWithFeedback(ctx context.Context, sender inputSender, channel inputChannel, ready <-chan struct{}, keyboard *Keyboard, deadzone float64, pollingRate int, pads func() []*gamepad.Pad, onError func(error), onRecovery func(), feedback <-chan vibrationMessage, setMotor func(*gamepad.Pad, float64, float64)) error {
 	select {
 	case <-ctx.Done():
 		return nil
@@ -134,7 +139,17 @@ func runWithFeedback(ctx context.Context, sender inputSender, channel inputChann
 		select {
 		case <-ctx.Done():
 			return nil
-		case v := <-feedback:
+		case message := <-feedback:
+			if channel.ReadyState() != webrtc.DataChannelStateOpen {
+				continue
+			}
+			v := message.value
+			if v.Duration > 0 {
+				v.Duration -= time.Since(message.received)
+				if v.Duration <= 0 {
+					continue
+				}
+			}
 			for pad, index := range slots.pads {
 				if index == v.Index {
 					rumble.play(v.Index, pad, v)
@@ -145,6 +160,7 @@ func runWithFeedback(ctx context.Context, sender inputSender, channel inputChann
 			transitionDelayed = false
 			state := channel.ReadyState()
 			if state == webrtc.DataChannelStateClosing || state == webrtc.DataChannelStateClosed {
+				rumble.clear()
 				report(errors.New("controller input channel closed"))
 				if !waitRetry(ctx) {
 					return nil

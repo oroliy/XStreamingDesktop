@@ -80,3 +80,11 @@ func (m *rumbleManager) close() {
 		m.stop(index)
 	}
 }
+
+func (m *rumbleManager) clear() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for index := range m.effects {
+		m.stop(index)
+	}
+}

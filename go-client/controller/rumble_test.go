@@ -3,11 +3,13 @@ package controller
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/plugins/game/gamepad"
 	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
+	"github.com/pion/webrtc/v4"
 )
 
 type motorCall struct {
@@ -88,7 +90,7 @@ func TestFeedbackUsesStreamingSlotAndStopsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	ready := make(chan struct{})
 	close(ready)
-	feedback := make(chan protocol.Vibration, 1)
+	feedback := make(chan vibrationMessage, 1)
 	calls := make(chan motorCall, 3)
 	pad := new(gamepad.Pad)
 	sender := &feedbackTestSender{added: make(chan uint8, 1)}
@@ -104,7 +106,14 @@ func TestFeedbackUsesStreamingSlotAndStopsOnCancel(t *testing.T) {
 		cancel()
 		t.Fatal("pad was not announced")
 	}
-	feedback <- protocol.Vibration{Index: 0, LeftMotor: 0.8, RightMotor: 0.3, Duration: time.Second}
+	feedback <- vibrationMessage{value: protocol.Vibration{Index: 0, LeftMotor: 1, Duration: time.Millisecond}, received: time.Now().Add(-time.Second)}
+	select {
+	case call := <-calls:
+		cancel()
+		t.Fatalf("expired feedback activated motors: %+v", call)
+	case <-time.After(30 * time.Millisecond):
+	}
+	feedback <- vibrationMessage{value: protocol.Vibration{Index: 0, LeftMotor: 0.8, RightMotor: 0.3, Duration: time.Second}, received: time.Now()}
 	select {
 	case call := <-calls:
 		if call.pad != pad || call.left != 0.8 || call.right != 0.3 {
@@ -125,5 +134,62 @@ func TestFeedbackUsesStreamingSlotAndStopsOnCancel(t *testing.T) {
 		}
 	default:
 		t.Fatal("cancel did not stop motors")
+	}
+}
+
+type mutableInputChannel struct{ closed atomic.Bool }
+
+func (c *mutableInputChannel) ReadyState() webrtc.DataChannelState {
+	if c.closed.Load() {
+		return webrtc.DataChannelStateClosed
+	}
+	return webrtc.DataChannelStateOpen
+}
+
+func TestClosedInputStopsVibration(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ready := make(chan struct{})
+	close(ready)
+	feedback := make(chan vibrationMessage, 2)
+	calls := make(chan motorCall, 4)
+	pad := new(gamepad.Pad)
+	sender := &feedbackTestSender{added: make(chan uint8, 1)}
+	input := &mutableInputChannel{}
+	done := make(chan error, 1)
+	go func() {
+		done <- runWithFeedback(ctx, sender, input, ready, &Keyboard{}, 0, 60,
+			func() []*gamepad.Pad { return []*gamepad.Pad{pad} }, nil, nil, feedback,
+			func(p *gamepad.Pad, left, right float64) { calls <- motorCall{p, left, right} })
+	}()
+	select {
+	case <-sender.added:
+	case <-time.After(time.Second):
+		t.Fatal("pad was not announced")
+	}
+	feedback <- vibrationMessage{value: protocol.Vibration{Index: 0, LeftMotor: 1, Duration: time.Second}, received: time.Now()}
+	select {
+	case <-calls:
+	case <-time.After(time.Second):
+		t.Fatal("motors did not start")
+	}
+	input.closed.Store(true)
+	select {
+	case call := <-calls:
+		if call.left != 0 || call.right != 0 {
+			t.Fatalf("motors not stopped: %+v", call)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("closed channel did not stop motors")
+	}
+	feedback <- vibrationMessage{value: protocol.Vibration{Index: 0, LeftMotor: 1, Duration: time.Second}, received: time.Now()}
+	select {
+	case call := <-calls:
+		t.Fatalf("closed channel restarted motors: %+v", call)
+	case <-time.After(50 * time.Millisecond):
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
