@@ -12,6 +12,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/oroliy/XStreamingDesktop/go-client/auth"
+	"github.com/oroliy/XStreamingDesktop/go-client/catalog"
 	"github.com/oroliy/XStreamingDesktop/go-client/controller"
 	"github.com/oroliy/XStreamingDesktop/go-client/media"
 	"github.com/oroliy/XStreamingDesktop/go-client/session"
@@ -27,6 +28,9 @@ type app struct {
 	status, code, uri string
 	consoles          []streaming.Console
 	client            *streaming.Client
+	cloud             *streaming.Client
+	titles            []streaming.Title
+	cloudStatus       string
 	refresh           string
 	streamCancel      context.CancelFunc
 	frame             *ui.Bitmap
@@ -63,18 +67,40 @@ func (a *app) view(c *ui.Context) {
 				go a.signIn()
 			}
 		}
-		for _, console := range a.consoles {
-			ui.Text(c, fmt.Sprintf("%s (%s) — %s", console.Name, console.ConsoleType, console.PowerState))
-			if !a.busy && a.streamCancel == nil && console.ServerID != "" {
-				if ui.Button(c.Key(console.ServerID), "Start stream").Clicked() {
-					ctx, cancel := context.WithCancel(a.ctx)
-					a.streamCancel = cancel
-					a.busy = true
-					a.status = "Starting stream…"
-					go a.startStream(ctx, a.client, a.refresh, console.ServerID)
+		ui.Scroll(c.Key("library")).Grow(1).Width(680).Gap(8).Children(func() {
+			ui.Text(c, "Consoles").Bold()
+			for _, console := range a.consoles {
+				ui.Text(c, fmt.Sprintf("%s (%s) — %s", console.Name, console.ConsoleType, console.PowerState))
+				if !a.busy && a.streamCancel == nil && console.ServerID != "" {
+					if ui.Button(c.Key(console.ServerID), "Start stream").Clicked() {
+						ctx, cancel := context.WithCancel(a.ctx)
+						a.streamCancel = cancel
+						a.busy = true
+						a.status = "Starting stream…"
+						go a.startStream(ctx, a.client, a.refresh, console.ServerID)
+					}
 				}
 			}
-		}
+			ui.Text(c, "Cloud games").Bold()
+			if a.cloudStatus != "" {
+				ui.Text(c, a.cloudStatus)
+			}
+			for index, title := range a.titles {
+				if title.TitleID == "" {
+					continue
+				}
+				ui.Text(c, title.Name)
+				if !a.busy && a.streamCancel == nil && a.cloud != nil {
+					if ui.Button(c.Key(fmt.Sprintf("cloud-%d-%s", index, title.TitleID)), "Play").Clicked() {
+						ctx, cancel := context.WithCancel(a.ctx)
+						a.streamCancel = cancel
+						a.busy = true
+						a.status = "Starting cloud game…"
+						go a.startStream(ctx, a.cloud, a.refresh, title.TitleID)
+					}
+				}
+			}
+		})
 	})
 }
 func (a *app) update(fn func()) { a.win.Update(fn) }
@@ -136,7 +162,45 @@ func (a *app) signIn() {
 		a.refresh = token.RefreshToken
 		a.consoles = consoles
 		a.status = fmt.Sprintf("Signed in. Found %d console(s).", len(consoles))
+		a.cloudStatus = "Loading cloud games…"
 	})
+	go a.loadCloud(xbox, xsts.Token)
+}
+func (a *app) loadCloud(xbox *auth.XboxClient, token string) {
+	cloud, err := xbox.Streaming(a.ctx, token, "xgpuweb")
+	if err != nil {
+		cloud, err = xbox.Streaming(a.ctx, token, "xgpuwebf2p")
+	}
+	if err != nil {
+		a.update(func() { a.cloudStatus = "Cloud games unavailable for this account or region." })
+		return
+	}
+	region, err := cloud.DefaultRegion()
+	if err != nil {
+		a.update(func() { a.cloudStatus = "Cloud region unavailable." })
+		return
+	}
+	client, err := streaming.NewClient(region.BaseURI, cloud.GSToken, "cloud", nil)
+	if err != nil {
+		a.update(func() { a.cloudStatus = "Invalid cloud service region." })
+		return
+	}
+	titles, err := client.Titles(a.ctx)
+	if err != nil {
+		a.update(func() { a.cloudStatus = "Unable to load cloud games." })
+		return
+	}
+	names, err := catalog.NewClient().Resolve(a.ctx, titles, "US", "en-US")
+	if err != nil {
+		names = titles
+		for i := range names {
+			names[i].Name = names[i].Details.ProductID
+			if names[i].Name == "" {
+				names[i].Name = names[i].TitleID
+			}
+		}
+	}
+	a.update(func() { a.cloud = client; a.titles = names; a.cloudStatus = fmt.Sprintf("%d games", len(names)) })
 }
 func (a *app) startStream(ctx context.Context, client *streaming.Client, refresh, target string) {
 	onError := func(err error) {
