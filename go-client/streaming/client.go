@@ -20,6 +20,7 @@ type Client struct {
 	refresh     func(context.Context) (string, string, error)
 	base        *url.URL
 	token       string
+	generation  uint64
 	kind        string
 	http        *http.Client
 }
@@ -58,47 +59,61 @@ func (c *Client) SetRefresh(fn func(context.Context) (string, string, error)) {
 	defer c.mu.Unlock()
 	c.refresh = fn
 }
-func (c *Client) requestHeaders(ctx context.Context, method, path string, body any, out any, headers http.Header) (int, error) {
+func (c *Client) credentials() (url.URL, string, uint64) {
 	c.mu.Lock()
-	old := c.token
-	c.mu.Unlock()
-	status, err := c.requestOnce(ctx, method, path, body, out, headers)
+	defer c.mu.Unlock()
+	return *c.base, c.token, c.generation
+}
+func (c *Client) requestHeaders(ctx context.Context, method, path string, body any, out any, headers http.Header) (int, error) {
+	base, token, generation := c.credentials()
+	status, err := c.requestOnce(ctx, method, path, body, out, headers, base, token)
 	if status != 401 && status != 403 {
 		return status, err
 	}
 	select {
 	case c.refreshGate <- struct{}{}:
-		defer func() { <-c.refreshGate }()
 	case <-ctx.Done():
 		return status, ctx.Err()
 	}
-	c.mu.Lock()
-	current, fn := c.token, c.refresh
-	c.mu.Unlock()
-	if fn == nil {
-		return status, err
-	}
-	if current == old {
+	refreshErr := func() error {
+		defer func() { <-c.refreshGate }()
+		c.mu.Lock()
+		current, fn := c.generation, c.refresh
+		c.mu.Unlock()
+		if fn == nil {
+			return nil
+		}
+		if current != generation {
+			return nil
+		}
 		token, base, e := fn(ctx)
 		if e != nil {
-			return status, fmt.Errorf("refresh streaming token: %w", e)
+			return fmt.Errorf("refresh streaming token: %w", e)
 		}
 		validated, e := NewClient(base, token, c.kind, c.http)
 		if e != nil {
-			return status, e
+			return e
 		}
 		c.mu.Lock()
+		defer c.mu.Unlock()
 		if c.base.Scheme == "https" && validated.base.Scheme != "https" {
-			c.mu.Unlock()
-			return status, fmt.Errorf("refusing insecure streaming region")
+			return fmt.Errorf("refusing insecure streaming region")
 		}
 		c.token = validated.token
 		c.base = validated.base
-		c.mu.Unlock()
+		c.generation++
+		return nil
+	}()
+	if refreshErr != nil {
+		return status, refreshErr
 	}
-	return c.requestOnce(ctx, method, path, body, out, headers)
+	base, token, newGeneration := c.credentials()
+	if newGeneration == generation {
+		return status, err
+	}
+	return c.requestOnce(ctx, method, path, body, out, headers, base, token)
 }
-func (c *Client) requestOnce(ctx context.Context, method, path string, body any, out any, headers http.Header) (int, error) {
+func (c *Client) requestOnce(ctx context.Context, method, path string, body any, out any, headers http.Header, u url.URL, token string) (int, error) {
 	var data io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -107,10 +122,6 @@ func (c *Client) requestOnce(ctx context.Context, method, path string, body any,
 		}
 		data = bytes.NewReader(b)
 	}
-	c.mu.Lock()
-	u := *c.base
-	token := c.token
-	c.mu.Unlock()
 	u.Path, u.RawQuery, _ = strings.Cut(path, "?")
 	req, err := http.NewRequestWithContext(ctx, method, u.String(), data)
 	if err != nil {

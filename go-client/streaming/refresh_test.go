@@ -80,3 +80,31 @@ func TestWaitingForRefreshCanBeCanceled(t *testing.T) {
 	close(release)
 	<-first
 }
+
+func TestConcurrentRefreshWithUnchangedToken(t *testing.T) {
+	const count = 8
+	var arrived atomic.Int32
+	all := make(chan struct{})
+	var refreshes atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if n := arrived.Add(1); n <= count {
+			if n == count {
+				close(all)
+			}
+			<-all
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+	client, _ := NewClient(server.URL, "same", "cloud", server.Client())
+	client.SetRefresh(func(context.Context) (string, string, error) { refreshes.Add(1); return "same", server.URL, nil })
+	var wg sync.WaitGroup
+	for i := 0; i < count; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); _, _ = client.Titles(context.Background()) }()
+	}
+	wg.Wait()
+	if refreshes.Load() != 1 {
+		t.Fatalf("refreshed %d times", refreshes.Load())
+	}
+}
