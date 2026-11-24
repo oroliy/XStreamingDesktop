@@ -16,6 +16,7 @@ import (
 )
 
 var ErrConnectionTimeout = errors.New("timed out waiting for WebRTC connection")
+var ErrHandshakeTimeout = errors.New("timed out waiting for control handshake")
 var ErrDisconnectTimeout = errors.New("WebRTC connection did not recover")
 
 // CleanupError reports a failure to stop a remote session after startup failed.
@@ -48,6 +49,7 @@ type Options struct {
 	OnConnectionState func(webrtc.PeerConnectionState)
 	PreferIPv6        bool
 	ConnectionTimeout time.Duration // zero defaults to 45 seconds after signaling
+	HandshakeTimeout  time.Duration // zero defaults to 30 seconds after connecting
 	DisconnectTimeout time.Duration // zero defaults to 30 seconds after a connected session disconnects
 	SignalingTimeout  time.Duration // zero defaults to 60 seconds after provisioning
 }
@@ -151,6 +153,11 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 		timeout = 45 * time.Second
 	}
 	go monitorConnection(live, connected, timeout, cancel)
+	handshakeTimeout := opts.HandshakeTimeout
+	if handshakeTimeout <= 0 {
+		handshakeTimeout = 30 * time.Second
+	}
+	go monitorHandshake(live, connected, s.peer.Ready(), handshakeTimeout, cancel)
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
@@ -284,6 +291,28 @@ func monitorConnection(ctx context.Context, connected <-chan struct{}, timeout t
 		case <-ctx.Done():
 		default:
 			cancel(ErrConnectionTimeout)
+		}
+	}
+}
+
+// monitorHandshake starts its deadline only after the transport connects.
+func monitorHandshake(ctx context.Context, connected, ready <-chan struct{}, timeout time.Duration, cancel context.CancelCauseFunc) {
+	select {
+	case <-ctx.Done():
+		return
+	case <-connected:
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+	case <-ready:
+	case <-timer.C:
+		select {
+		case <-ready:
+		case <-ctx.Done():
+		default:
+			cancel(ErrHandshakeTimeout)
 		}
 	}
 }

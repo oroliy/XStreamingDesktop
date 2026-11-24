@@ -1324,7 +1324,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	case <-s.Done():
 	}
 	failed := ctx.Err() == nil
-	connectionTimedOut := failed && errors.Is(s.Err(), session.ErrConnectionTimeout)
+	connectionTimedOut := failed && (errors.Is(s.Err(), session.ErrConnectionTimeout) || errors.Is(s.Err(), session.ErrHandshakeTimeout))
 	disconnectTimedOut := failed && errors.Is(s.Err(), session.ErrDisconnectTimeout)
 	cleanupErr := s.Close()
 	a.update(func() {

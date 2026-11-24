@@ -542,6 +542,44 @@ func TestConnectionTimeoutAndCancellation(t *testing.T) {
 	}
 }
 
+func TestHandshakeTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	connected := make(chan struct{})
+	go monitorHandshake(ctx, connected, make(chan struct{}), 20*time.Millisecond, cancel)
+	// The connection deadline is handled separately; do not time out early.
+	time.Sleep(40 * time.Millisecond)
+	if ctx.Err() != nil {
+		t.Fatal("handshake timed out before connection")
+	}
+	close(connected)
+	select {
+	case <-ctx.Done():
+		if !errors.Is(context.Cause(ctx), ErrHandshakeTimeout) {
+			t.Fatal(context.Cause(ctx))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("handshake did not time out")
+	}
+}
+
+func TestReadyHandshakeDoesNotTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	connected, ready, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	close(connected)
+	close(ready)
+	go func() { monitorHandshake(ctx, connected, ready, time.Millisecond, cancel); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("handshake monitor did not stop")
+	}
+	if err := context.Cause(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDisconnectWatchRecoveryAndTimeout(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
