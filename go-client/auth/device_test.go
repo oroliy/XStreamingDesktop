@@ -19,7 +19,7 @@ func TestDeviceAndRefresh(t *testing.T) {
 		}
 		switch r.URL.Path {
 		case "/devicecode":
-			w.Write([]byte(`{"device_code":"dev","user_code":"abc","expires_in":60,"interval":1}`))
+			w.Write([]byte(`{"device_code":"dev","user_code":"abc","verification_uri":"https://example.com","expires_in":60,"interval":1}`))
 		case "/token":
 			if r.Form.Get("grant_type") == "refresh_token" && r.Form.Get("refresh_token") != "refresh" {
 				t.Error("missing refresh token")

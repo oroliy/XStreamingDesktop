@@ -73,7 +73,7 @@ func (c *Client) post(ctx context.Context, path string, form url.Values, out any
 func (c *Client) Start(ctx context.Context) (DeviceCode, error) {
 	var code DeviceCode
 	err := c.post(ctx, "/devicecode", url.Values{"client_id": {ClientID}, "scope": {"xboxlive.signin openid profile offline_access"}}, &code)
-	if err == nil && (code.DeviceCode == "" || code.ExpiresIn <= 0) {
+	if err == nil && (code.DeviceCode == "" || code.UserCode == "" || code.VerificationURI == "" || code.ExpiresIn <= 0) {
 		err = errors.New("invalid device code response")
 	}
 	return code, err

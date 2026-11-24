@@ -58,7 +58,7 @@ func (c *Client) requestHeaders(ctx context.Context, method, path string, body a
 		data = bytes.NewReader(b)
 	}
 	u := *c.base
-	u.Path = path
+	u.Path, u.RawQuery, _ = strings.Cut(path, "?")
 	req, err := http.NewRequestWithContext(ctx, method, u.String(), data)
 	if err != nil {
 		return 0, err
