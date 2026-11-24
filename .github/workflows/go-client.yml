@@ -1,0 +1,55 @@
+name: Go client
+
+on:
+  push:
+    paths:
+      - 'go-client/**'
+      - '.github/workflows/go-client.yml'
+  pull_request:
+    paths:
+      - 'go-client/**'
+      - '.github/workflows/go-client.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go-client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go-client/go.mod
+          cache-dependency-path: go-client/go.sum
+      - run: go test -race ./...
+      - run: go vet ./...
+  cross-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {goos: linux, goarch: amd64}
+          - {goos: linux, goarch: arm64}
+          - {goos: windows, goarch: amd64}
+          - {goos: darwin, goarch: amd64}
+          - {goos: darwin, goarch: arm64}
+    defaults:
+      run:
+        working-directory: go-client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go-client/go.mod
+          cache-dependency-path: go-client/go.sum
+      - run: go build -o "$RUNNER_TEMP/xstreaming" ./cmd/xstreaming
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
