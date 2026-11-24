@@ -17,6 +17,19 @@ type motorCall struct {
 	left, right float64
 }
 
+func TestXInputSlotUsesOnlyExactMyGoNames(t *testing.T) {
+	for name, want := range map[string]int{"Xbox Controller 1": 0, "Xbox Controller 2": 1, "Xbox Controller 3": 2, "Xbox Controller 4": 3} {
+		if got, ok := xinputSlot(name); !ok || got != want {
+			t.Errorf("%q: got %d, %v; want %d", name, got, ok, want)
+		}
+	}
+	for _, name := range []string{"", "Xbox Controller 0", "Xbox Controller 5", "Xbox Controller 01", "Xbox Controller +1", "Other 1", "Xbox Controller 1 extra"} {
+		if slot, ok := xinputSlot(name); ok {
+			t.Errorf("accepted %q as slot %d", name, slot)
+		}
+	}
+}
+
 func TestRumbleReplacementDisconnectAndClose(t *testing.T) {
 	var mu sync.Mutex
 	var calls []motorCall

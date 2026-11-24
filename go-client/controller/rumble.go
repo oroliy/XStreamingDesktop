@@ -1,12 +1,27 @@
 package controller
 
 import (
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/egoist/mygo/plugins/game/gamepad"
 	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
 )
+
+// xinputSlot recognizes the exact names used by MyGo's Windows XInput backend.
+func xinputSlot(name string) (int, bool) {
+	const prefix = "Xbox Controller "
+	if !strings.HasPrefix(name, prefix) {
+		return 0, false
+	}
+	number, err := strconv.Atoi(strings.TrimPrefix(name, prefix))
+	if err != nil || number < 1 || number > 4 || name != prefix+strconv.Itoa(number) {
+		return 0, false
+	}
+	return number - 1, true
+}
 
 type rumbleEffect struct {
 	pad   *gamepad.Pad
