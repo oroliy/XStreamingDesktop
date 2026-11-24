@@ -28,22 +28,30 @@ func NewClient() *Client {
 // Wake sends a remote wake command. A successful HTTP response only confirms
 // the request was accepted; it does not mean the console has powered on.
 func (c *Client) Wake(ctx context.Context, consoleID string, token auth.XboxToken) error {
-	return c.powerCommand(ctx, consoleID, token, "WakeUp")
+	return c.sendCommand(ctx, consoleID, token, "Power", "WakeUp", []any{})
 }
 
 // PowerOff requests a console shutdown; acceptance does not confirm its power state.
 func (c *Client) PowerOff(ctx context.Context, consoleID string, token auth.XboxToken) error {
-	return c.powerCommand(ctx, consoleID, token, "TurnOff")
+	return c.sendCommand(ctx, consoleID, token, "Power", "TurnOff", []any{})
 }
 
-func (c *Client) powerCommand(ctx context.Context, consoleID string, token auth.XboxToken, command string) error {
+// SendText sends text to the active console input field via remote management.
+func (c *Client) SendText(ctx context.Context, consoleID string, token auth.XboxToken, text string) error {
+	if text == "" {
+		return errors.New("text is empty")
+	}
+	return c.sendCommand(ctx, consoleID, token, "Shell", "InjectString", []any{map[string]string{"replacementString": text}})
+}
+
+func (c *Client) sendCommand(ctx context.Context, consoleID string, token auth.XboxToken, commandType, command string, parameters []any) error {
 	if consoleID == "" || strings.ContainsAny(consoleID, "\r\n") {
 		return errors.New("invalid console ID")
 	}
 	if token.Token == "" || len(token.DisplayClaims.XUI) == 0 || token.DisplayClaims.XUI[0].UserHash == "" {
 		return errors.New("missing Xbox web credentials")
 	}
-	payload := map[string]any{"destination": "Xbox", "type": "Power", "command": command, "sessionId": uuid.NewString(), "sourceId": "com.microsoft.smartglass", "parameters": []any{}, "linkedXboxId": consoleID}
+	payload := map[string]any{"destination": "Xbox", "type": commandType, "command": command, "sessionId": uuid.NewString(), "sourceId": "com.microsoft.smartglass", "parameters": parameters, "linkedXboxId": consoleID}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err

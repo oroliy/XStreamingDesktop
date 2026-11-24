@@ -73,3 +73,34 @@ func TestPowerOff(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSendText(t *testing.T) {
+	const text = "你好, Xbox!"
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Type       string `json:"type"`
+			Command    string `json:"command"`
+			ConsoleID  string `json:"linkedXboxId"`
+			Parameters []struct {
+				Text string `json:"replacementString"`
+			} `json:"parameters"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Type != "Shell" || body.Command != "InjectString" || body.ConsoleID != "console" || len(body.Parameters) != 1 || body.Parameters[0].Text != text {
+			t.Errorf("invalid text request: %+v, %v", body, err)
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer s.Close()
+	var token auth.XboxToken
+	token.Token = "token"
+	token.DisplayClaims.XUI = append(token.DisplayClaims.XUI, struct {
+		UserHash string `json:"uhs"`
+	}{"hash"})
+	c := &Client{http: s.Client(), endpoint: s.URL}
+	if err := c.SendText(context.Background(), "console", token, text); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SendText(context.Background(), "console", token, ""); err == nil {
+		t.Fatal("accepted empty text")
+	}
+}

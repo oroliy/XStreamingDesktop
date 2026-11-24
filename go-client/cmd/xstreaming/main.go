@@ -45,6 +45,11 @@ type app struct {
 	accountCtx        context.Context
 	accountCancel     context.CancelFunc
 	streamCancel      context.CancelFunc
+	streamCtx         context.Context
+	streamConnected   bool
+	consoleText       string
+	textStatus        string
+	textSending       bool
 	streamWG          *sync.WaitGroup
 	streamDone        <-chan error
 	streamHomeID      string
@@ -125,6 +130,20 @@ func (a *app) view(c *ui.Context) {
 			if ui.Button(c.Key("keyboard"), a.tr(label)).Clicked() {
 				a.keyboardEnabled = !a.keyboardEnabled
 			}
+			if a.streamHomeID != "" && a.streamConnected && !a.keyboardEnabled && a.streamCtx != nil && a.credentials != nil {
+				ui.Row(c).Gap(8).Children(func() {
+					ui.TextInput(c.Key("console-text"), &a.consoleText).Placeholder(a.tr("Text for console")).Label(a.tr("Text for console")).Width(320)
+					if ui.Button(c.Key("send-console-text"), a.tr("Send text")).Disabled(a.textSending || a.consoleText == "").Clicked() {
+						text, ctx, id, credentials := a.consoleText, a.streamCtx, a.streamHomeID, a.credentials
+						a.textSending = true
+						a.textStatus = "Sending text…"
+						go a.sendConsoleText(ctx, credentials, id, text)
+					}
+				})
+				if a.textStatus != "" {
+					ui.Text(c, a.tr(a.textStatus))
+				}
+			}
 			if a.keyboardEnabled {
 				a.keyboard.Set(true, controller.MapKeys(c.KeyDown))
 				ui.Box(c.Key("keyboard-capture")).Focusable().AutoFocus().Label(a.tr("Keyboard controller")).HandleInput(func(ev ui.InputEvent) bool {
@@ -202,6 +221,8 @@ func (a *app) view(c *ui.Context) {
 					if ui.Button(c.Key(console.ServerID), a.tr("Start stream")).Clicked() {
 						ctx, cancel := context.WithCancel(a.ctx)
 						a.streamCancel = cancel
+						a.streamConnected = false
+						a.consoleText, a.textStatus, a.textSending = "", "", false
 						a.busy = true
 						a.status = "Starting stream…"
 						a.wakeWarning = ""
@@ -326,6 +347,8 @@ func (a *app) view(c *ui.Context) {
 					if ui.Button(c.Key(fmt.Sprintf("cloud-%d-%s", start+index, title.TitleID)), a.tr("Play")).Clicked() {
 						ctx, cancel := context.WithCancel(a.ctx)
 						a.streamCancel = cancel
+						a.streamConnected = false
+						a.consoleText, a.textStatus, a.textSending = "", "", false
 						a.busy = true
 						a.status = "Starting cloud game…"
 						a.wakeWarning = ""
@@ -671,6 +694,27 @@ func (a *app) wakeConsole(ctx context.Context, credentials *auth.Session, id str
 	})
 }
 
+func (a *app) sendConsoleText(ctx context.Context, credentials *auth.Session, id, text string) {
+	token, err := credentials.WebToken(ctx)
+	if err == nil {
+		err = remote.NewClient().SendText(ctx, id, token, text)
+	}
+	a.update(func() {
+		if ctx.Err() != nil || a.streamCtx != ctx {
+			return
+		}
+		a.textSending = false
+		if err != nil {
+			a.textStatus = "Unable to send text: " + err.Error()
+		} else {
+			if a.consoleText == text {
+				a.consoleText = ""
+			}
+			a.textStatus = "Text sent."
+		}
+	})
+}
+
 func (a *app) powerOffConsole(ctx context.Context, credentials *auth.Session, id string) {
 	token, err := credentials.WebToken(ctx)
 	if err == nil {
@@ -731,6 +775,8 @@ func (a *app) stopStream(powerOff bool) {
 	}
 	a.streamCancel()
 	a.streamCancel = nil
+	a.streamConnected = false
+	a.consoleText, a.textStatus, a.textSending = "", "", false
 	a.busy = true
 	a.frame = nil
 	a.decodedFPS = 0
@@ -758,10 +804,13 @@ func (a *app) startStreamAsync(ctx context.Context, client *streaming.Client, cr
 	a.streamWG.Add(1)
 	done := make(chan error, 1)
 	flag := &atomic.Bool{}
-	a.streamDone, a.streamPowerOff = done, flag
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	a.streamDone, a.streamPowerOff, a.streamCtx = done, flag, streamCtx
 	go func() {
 		defer a.streamWG.Done()
-		done <- a.startStream(ctx, client, credentials, target, prefs, flag, wakeBefore)
+		err := a.startStream(streamCtx, client, credentials, target, prefs, flag, wakeBefore)
+		cancelStream()
+		done <- err
 		close(done)
 	}()
 }
@@ -924,6 +973,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 			connectedOnce.Do(func() { close(connected) })
 			a.update(func() {
 				if ctx.Err() == nil {
+					a.streamConnected = true
 					if a.frame == nil {
 						a.status = "Connected; waiting for video…"
 					} else {
@@ -934,12 +984,14 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		case webrtc.PeerConnectionStateDisconnected:
 			a.update(func() {
 				if ctx.Err() == nil {
+					a.streamConnected = false
 					a.status = "Connection interrupted…"
 				}
 			})
 		case webrtc.PeerConnectionStateFailed:
 			a.update(func() {
 				if ctx.Err() == nil {
+					a.streamConnected = false
 					a.status = "Connection failed; cleaning up…"
 				}
 			})
@@ -1062,6 +1114,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		}
 		a.frame = nil
 		a.decodedFPS = 0
+		a.streamConnected = false
 		a.wakeWarning = ""
 		a.keyboardEnabled = false
 		a.keyboard.Set(false, protocol.Gamepad{})

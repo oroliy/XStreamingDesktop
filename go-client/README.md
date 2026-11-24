@@ -29,7 +29,7 @@ During a stream, keyboard gamepad mode can be enabled manually. WASD and TFGH co
 
 The stream view offers a full-screen toggle and displays decoded video frames per second (which may differ from rendered frames). Starting volume is configurable before a stream; changes apply to the next stream.
 
-The console list can send wake and power-off requests through Xbox remote management. An optional setting sends a wake request for a standby console before starting a home stream. A home stream can also be disconnected and then powered off after session cleanup. The console must allow remote management, and an accepted request does not guarantee the power state has changed. This flow has not been tested with a real Xbox.
+The console list can send wake and power-off requests through Xbox remote management. An optional setting sends a wake request for a standby console before starting a home stream. During a home stream, text can be sent to the console while keyboard gamepad mode is disabled; the stream can also be disconnected and then powered off after session cleanup. The console must allow remote management, and an accepted request does not guarantee the power state has changed. This flow has not been tested with a real Xbox.
 
 The optional IPv6 preference orders remote ICE candidates for new sessions; IPv4 candidates remain available.
 

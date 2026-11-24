@@ -421,3 +421,25 @@ func TestWakeBeforeStreamPreferencePersists(t *testing.T) {
 		t.Fatalf("setting=%v error=%v", saved.WakeBeforeStream, err)
 	}
 }
+
+func TestConsoleTextHiddenForKeyboardController(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := &app{prefs: settings.Defaults(), streamCtx: ctx, streamCancel: cancel, streamHomeID: "console", credentials: auth.NewSession("refresh")}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if tt.HasText("Send text") {
+		t.Fatal("text control shown before connection")
+	}
+	a.streamConnected = true
+	tt.Frame()
+	if !tt.HasText("Send text") {
+		t.Fatal("home stream has no text control")
+	}
+	if err := tt.Click("Enable keyboard controller"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tt.HasText("Send text") {
+		t.Fatal("text control overlaps keyboard controller mode")
+	}
+}
