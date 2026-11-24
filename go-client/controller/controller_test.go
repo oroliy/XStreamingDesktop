@@ -4,6 +4,7 @@ import (
 	"github.com/egoist/mygo/plugins/game/gamepad"
 	"github.com/egoist/mygo/ui"
 	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
+	"math"
 	"testing"
 )
 
@@ -40,5 +41,17 @@ func TestKeyboardMappingAndMerge(t *testing.T) {
 	enabled, v = k.Snapshot()
 	if enabled || v.Buttons != 0 {
 		t.Fatal("keyboard not cleared")
+	}
+}
+
+func TestStickDeadzone(t *testing.T) {
+	if x, y := ApplyDeadzone(0.03, 0.04, 0.1); x != 0 || y != 0 {
+		t.Fatalf("center drift: %v %v", x, y)
+	}
+	if x, y := ApplyDeadzone(0.55, 0, 0.1); math.Abs(x-0.5) > 1e-9 || y != 0 {
+		t.Fatalf("scaled stick: %v %v", x, y)
+	}
+	if x, y := ApplyDeadzone(0.03, 0.04, 0); x != 0.03 || y != 0.04 {
+		t.Fatalf("disabled deadzone: %v %v", x, y)
 	}
 }

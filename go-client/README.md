@@ -1,6 +1,6 @@
 # Go client (early development)
 
-This directory contains an early MyGo migration. The native window is an experimental preview that can initiate home and cloud streaming and display decoded H.264 frames. It reads up to four gamepads; vibration and other existing features are not implemented. Input, audio and video have not been validated with a real Xbox. Use the original Electron application for streaming.
+This directory contains an early MyGo migration. The native window is an experimental preview that can initiate home and cloud streaming and display decoded H.264 frames. It reads up to four gamepads with an adjustable stick dead zone; vibration and other existing features are not implemented. Input, audio and video have not been validated with a real Xbox. Use the original Electron application for streaming.
 
 [中文说明](README.zh_CN.md)
 

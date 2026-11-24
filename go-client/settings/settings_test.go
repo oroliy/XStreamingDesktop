@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -14,6 +15,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 	}
 	s.Resolution = "1080p HQ"
 	s.Language = "zh-TW"
+	s.StickDeadzone = 25
 	if err = Save(p, s); err != nil {
 		t.Fatal(err)
 	}
@@ -33,11 +35,21 @@ func TestLegacySettingsGainDefaultVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := Load(p)
-	if err != nil || got.Volume != 100 || got.ResolutionCode() != 720 || got.UILanguage != "English" {
+	if err != nil || got.Volume != 100 || got.StickDeadzone != 10 || got.ResolutionCode() != 720 || got.UILanguage != "English" {
 		t.Fatal(got, err)
 	}
 	got.Volume = 101
 	if err = got.Validate(); err == nil {
 		t.Fatal("accepted invalid volume")
+	}
+}
+
+func TestInvalidStickDeadzone(t *testing.T) {
+	s := Defaults()
+	for _, value := range []float64{-1, 51, math.NaN(), math.Inf(1)} {
+		s.StickDeadzone = value
+		if s.Validate() == nil {
+			t.Errorf("accepted %v", value)
+		}
 	}
 }

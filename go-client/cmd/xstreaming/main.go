@@ -227,6 +227,15 @@ func (a *app) view(c *ui.Context) {
 				}
 				ui.Text(c, fmt.Sprintf("%.0f%%", a.prefs.Volume))
 			})
+			ui.Row(c).Gap(8).Children(func() {
+				ui.Text(c, a.tr("Stick dead zone"))
+				if ui.Slider(c.Key("stick-deadzone"), &a.prefs.StickDeadzone, 0, 50).Label(a.tr("Stick dead zone")).Width(180).Changed() && a.settingsPath != "" {
+					if err := settings.Save(a.settingsPath, a.prefs); err != nil {
+						a.status = "Unable to save settings: " + err.Error()
+					}
+				}
+				ui.Text(c, fmt.Sprintf("%.0f%%", a.prefs.StickDeadzone))
+			})
 			ui.Text(c, a.tr("Cloud games")).Bold()
 			ui.TextInput(c.Key("search"), &a.filter).Placeholder(a.tr("Search games")).Label(a.tr("Search games")).Width(320)
 			if a.credentials != nil && a.accountCtx != nil && !a.busy && a.streamCancel == nil {
@@ -726,7 +735,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		return
 	}
 	go func() {
-		if err := controller.Run(ctx, s.Input(), s.InputChannel(), s.Ready(), &a.keyboard); err != nil {
+		if err := controller.Run(ctx, s.Input(), s.InputChannel(), s.Ready(), &a.keyboard, prefs.StickDeadzone/100); err != nil {
 			onError(err)
 		}
 	}()

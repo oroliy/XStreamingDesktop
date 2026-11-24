@@ -11,16 +11,17 @@ import (
 )
 
 type Settings struct {
-	Resolution string  `json:"resolution"`
-	UILanguage string  `json:"ui_language"`
-	Language   string  `json:"language"`
-	Market     string  `json:"market"`
-	Volume     float64 `json:"volume"`
-	PreferIPv6 bool    `json:"prefer_ipv6"`
+	Resolution    string  `json:"resolution"`
+	UILanguage    string  `json:"ui_language"`
+	Language      string  `json:"language"`
+	Market        string  `json:"market"`
+	Volume        float64 `json:"volume"`
+	StickDeadzone float64 `json:"stick_deadzone"`
+	PreferIPv6    bool    `json:"prefer_ipv6"`
 }
 
 func Defaults() Settings {
-	return Settings{Resolution: "1080p", UILanguage: "English", Language: "en-US", Market: "US", Volume: 100}
+	return Settings{Resolution: "1080p", UILanguage: "English", Language: "en-US", Market: "US", Volume: 100, StickDeadzone: 10}
 }
 func (s Settings) Validate() error {
 	if s.UILanguage != "English" && s.UILanguage != "简体中文" {
@@ -28,6 +29,9 @@ func (s Settings) Validate() error {
 	}
 	if math.IsNaN(s.Volume) || math.IsInf(s.Volume, 0) || s.Volume < 0 || s.Volume > 100 {
 		return errors.New("invalid volume")
+	}
+	if math.IsNaN(s.StickDeadzone) || math.IsInf(s.StickDeadzone, 0) || s.StickDeadzone < 0 || s.StickDeadzone > 50 {
+		return errors.New("invalid stick dead zone")
 	}
 	switch s.Resolution {
 	case "720p", "1080p", "1080p HQ":

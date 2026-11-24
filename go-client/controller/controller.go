@@ -3,6 +3,7 @@ package controller
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/egoist/mygo/plugins/game/gamepad"
@@ -30,9 +31,22 @@ func Map(s gamepad.State) protocol.Gamepad {
 	return g
 }
 
+// ApplyDeadzone removes small stick movements and rescales the remaining range.
+func ApplyDeadzone(x, y, deadzone float64) (float64, float64) {
+	if deadzone <= 0 {
+		return x, y
+	}
+	magnitude := math.Hypot(x, y)
+	if magnitude <= deadzone {
+		return 0, 0
+	}
+	scale := math.Min((magnitude-deadzone)/(1-deadzone), 1) / magnitude
+	return x * scale, y * scale
+}
+
 // Run sends up to four connected controllers at 60Hz until ctx is canceled.
 // On disconnect it sends a neutral frame to release held buttons.
-func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChannel, ready <-chan struct{}, keyboard *Keyboard) error {
+func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChannel, ready <-chan struct{}, keyboard *Keyboard, deadzone float64) error {
 	select {
 	case <-ctx.Done():
 		return nil
@@ -79,6 +93,8 @@ func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChan
 					continue
 				}
 				state := Map(pad.State())
+				state.LeftX, state.LeftY = ApplyDeadzone(state.LeftX, state.LeftY, deadzone)
+				state.RightX, state.RightY = ApplyDeadzone(state.RightX, state.RightY, deadzone)
 				state.Index = index
 				if enabled && index == 0 {
 					state = merge(state, virtual)
