@@ -23,5 +23,11 @@ func (c *Client) Titles(ctx context.Context) ([]Title, error) {
 		Results []Title `json:"results"`
 	}
 	_, err := c.request(ctx, http.MethodGet, "/v2/titles", nil, &response)
-	return response.Results, err
+	if err != nil {
+		return nil, err
+	}
+	if response.Results == nil {
+		return nil, errors.New("streaming service returned no results list")
+	}
+	return response.Results, nil
 }

@@ -139,3 +139,10 @@ func TestFetchHomeTokenError(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPlayableTitlesExcludeMissingID(t *testing.T) {
+	out := playableTitles([]streaming.Title{{TitleID: "playable", Name: "Game"}, {Name: "Missing ID"}})
+	if len(out) != 1 || out[0].TitleID != "playable" {
+		t.Fatal(out)
+	}
+}

@@ -58,3 +58,13 @@ func TestResolveCloudIDFallback(t *testing.T) {
 		t.Fatal(out, err)
 	}
 }
+
+func TestMissingProducts(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{}`)) }))
+	defer s.Close()
+	var title streaming.Title
+	title.Details.ProductID = "id"
+	if _, err := (&Client{http: s.Client(), endpoint: s.URL}).Resolve(context.Background(), []streaming.Title{title}, "", ""); err == nil {
+		t.Fatal("accepted missing products")
+	}
+}

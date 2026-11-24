@@ -24,5 +24,11 @@ func (c *Client) Consoles(ctx context.Context) ([]Console, error) {
 	headers := http.Header{}
 	headers.Set("X-MS-Device-Info", deviceInfo("windows"))
 	_, err := c.requestHeaders(ctx, http.MethodGet, "/v6/servers/home?mr=50", nil, &response, headers)
-	return response.Results, err
+	if err != nil {
+		return nil, err
+	}
+	if response.Results == nil {
+		return nil, errors.New("streaming service returned no results list")
+	}
+	return response.Results, nil
 }

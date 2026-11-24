@@ -87,6 +87,9 @@ func (c *Client) Resolve(ctx context.Context, titles []streaming.Title, market, 
 		if err = json.Unmarshal(data, &payload); err != nil {
 			return nil, err
 		}
+		if payload.Products == nil {
+			return nil, fmt.Errorf("catalog response is missing products")
+		}
 		for id, product := range payload.Products {
 			products[strings.ToUpper(id)] = productInfo{Name: product.ProductTitle, CloudID: product.XCloudTitleID}
 		}

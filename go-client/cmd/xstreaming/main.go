@@ -372,6 +372,7 @@ func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs se
 		return
 	}
 	names, err := catalog.NewClient().Resolve(ctx, titles, prefs.Market, prefs.Language)
+	catalogUnavailable := err != nil
 	if err != nil {
 		names = titles
 		for i := range names {
@@ -381,13 +382,26 @@ func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs se
 			}
 		}
 	}
+	names = playableTitles(names)
 	a.update(func() {
 		if ctx.Err() == nil && a.cloudGeneration.Load() == generation {
 			a.cloud = client
 			a.titles = names
 			a.cloudStatus = fmt.Sprintf("%d games", len(names))
+			if catalogUnavailable {
+				a.cloudStatus += " (catalog unavailable; showing IDs)"
+			}
 		}
 	})
+}
+func playableTitles(titles []streaming.Title) []streaming.Title {
+	out := make([]streaming.Title, 0, len(titles))
+	for _, title := range titles {
+		if title.TitleID != "" {
+			out = append(out, title)
+		}
+	}
+	return out
 }
 func (a *app) restore(prefs settings.Settings) {
 	token, err := mygo.Secrets.Service("XStreamingDesktop-Go").Get(tokenKey)

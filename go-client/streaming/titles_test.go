@@ -21,3 +21,24 @@ func TestCloudTitles(t *testing.T) {
 		t.Fatal(titles, err)
 	}
 }
+
+func TestMissingResultsIsError(t *testing.T) {
+	for _, body := range []string{`{}`, `{"results":null}`, ``} {
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(body)) }))
+		c, _ := NewClient(s.URL, "token", "cloud", s.Client())
+		_, err := c.Titles(context.Background())
+		s.Close()
+		if err == nil {
+			t.Fatalf("accepted missing results in %q", body)
+		}
+	}
+}
+func TestEmptyResultsIsValid(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"results":[]}`)) }))
+	defer s.Close()
+	c, _ := NewClient(s.URL, "token", "cloud", s.Client())
+	titles, err := c.Titles(context.Background())
+	if err != nil || len(titles) != 0 {
+		t.Fatal(titles, err)
+	}
+}

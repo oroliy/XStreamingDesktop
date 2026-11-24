@@ -21,3 +21,12 @@ func TestConsoles(t *testing.T) {
 		t.Fatalf("%v %v", consoles, err)
 	}
 }
+
+func TestConsolesMissingResults(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{}`)) }))
+	defer s.Close()
+	c, _ := NewClient(s.URL, "token", "home", s.Client())
+	if _, err := c.Consoles(context.Background()); err == nil {
+		t.Fatal("accepted missing results")
+	}
+}
