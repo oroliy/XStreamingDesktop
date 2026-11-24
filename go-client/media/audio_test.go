@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -46,6 +47,29 @@ func TestAudioChannels(t *testing.T) {
 func TestAudioVolume(t *testing.T) {
 	if _, err := NewAudioPlayer(context.Background(), 2, 101); err == nil {
 		t.Fatal("accepted invalid volume")
+	}
+}
+
+func TestAudioPlayerStopsWhenProcessIgnoresEOF(t *testing.T) {
+	if os.Getenv("XSTREAMING_STUCK_AUDIO") == "1" {
+		time.Sleep(time.Minute)
+		os.Exit(0)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestAudioPlayerStopsWhenProcessIgnoresEOF$")
+	cmd.Env = append(os.Environ(), "XSTREAMING_STUCK_AUDIO=1")
+	p, err := newAudioPlayer(cmd, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.closeTimeout = 50 * time.Millisecond
+	err = p.Close()
+	if err == nil || !strings.Contains(err.Error(), "audio player did not exit") {
+		t.Fatalf("expected audio player timeout, got %v", err)
+	}
+	if err2 := p.Close(); err2 == nil || err2.Error() != err.Error() {
+		t.Fatalf("repeat Close returned %v, first returned %v", err2, err)
 	}
 }
 

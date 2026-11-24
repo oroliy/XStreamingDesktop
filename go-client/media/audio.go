@@ -19,11 +19,12 @@ import (
 // AudioPlayer streams Opus RTP through an Ogg container to ffplay.
 // It requires ffplay and an available audio device.
 type AudioPlayer struct {
-	cmd        *exec.Cmd
-	ogg        *oggwriter.OggWriter
-	once       sync.Once
-	err        error
-	diagnostic *diagnosticTail
+	cmd          *exec.Cmd
+	ogg          *oggwriter.OggWriter
+	once         sync.Once
+	err          error
+	diagnostic   *diagnosticTail
+	closeTimeout time.Duration
 }
 
 func NewAudioPlayer(ctx context.Context, channels uint16, volume int) (*AudioPlayer, error) {
@@ -35,6 +36,10 @@ func NewAudioPlayer(ctx context.Context, channels uint16, volume int) (*AudioPla
 	}
 	cmd := exec.CommandContext(ctx, "ffplay", "-loglevel", "error", "-nodisp", "-autoexit", "-volume", strconv.Itoa(volume), "-probesize", "32", "-analyzeduration", "0", "-i", "pipe:0")
 	configureMediaProcess(cmd)
+	return newAudioPlayer(cmd, channels)
+}
+
+func newAudioPlayer(cmd *exec.Cmd, channels uint16) (*AudioPlayer, error) {
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -48,22 +53,36 @@ func NewAudioPlayer(ctx context.Context, channels uint16, volume int) (*AudioPla
 	writer, err := oggwriter.NewWith(stdin, 48000, channels)
 	if err != nil {
 		_ = stdin.Close()
+		_ = cmd.Process.Kill()
 		if waitErr := cmd.Wait(); waitErr != nil {
-			return nil, processError("ffplay", waitErr, diagnostic)
+			return nil, errors.Join(err, processError("ffplay", waitErr, diagnostic))
 		}
 		return nil, err
 	}
-	return &AudioPlayer{cmd: cmd, ogg: writer, diagnostic: diagnostic}, nil
+	return &AudioPlayer{cmd: cmd, ogg: writer, diagnostic: diagnostic, closeTimeout: 10 * time.Second}, nil
 }
 func (p *AudioPlayer) WriteRTP(packet *rtp.Packet) error { return p.ogg.WriteRTP(packet) }
 func (p *AudioPlayer) Close() error {
 	p.once.Do(func() {
-		err := p.ogg.Close()
-		waitErr := p.cmd.Wait()
-		if waitErr != nil {
-			p.err = processError("ffplay", waitErr, p.diagnostic)
-		} else if err != nil {
-			p.err = err
+		done := make(chan error, 1)
+		go func() {
+			err := p.ogg.Close()
+			if waitErr := p.cmd.Wait(); waitErr != nil {
+				err = errors.Join(err, processError("ffplay", waitErr, p.diagnostic))
+			}
+			done <- err
+		}()
+		timer := time.NewTimer(p.closeTimeout)
+		defer timer.Stop()
+		select {
+		case p.err = <-done:
+		case <-timer.C:
+			select {
+			case p.err = <-done:
+			default:
+				_ = p.cmd.Process.Kill()
+				p.err = errors.Join(<-done, errors.New("audio player did not exit after input closed"))
+			}
 		}
 	})
 	return p.err
