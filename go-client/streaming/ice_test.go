@@ -84,3 +84,26 @@ func TestTeredoTCPDoesNotInventUDPCandidates(t *testing.T) {
 		t.Fatalf("candidate=%+v error=%v", got, err)
 	}
 }
+
+func TestNormalizeICEMDNSAndInvalidCandidates(t *testing.T) {
+	input := []ICECandidate{
+		{Candidate: "candidate:1 1 UDP 10 bad.example 1234 typ host"},
+		{Candidate: "candidate:2 1 UDP 10 Console-123.LOCAL 2345 typ host", SDPMid: "video", SDPMLineIndex: "1"},
+		{Candidate: "candidate:3 1 UDP 10 192.0.2.1 0 typ host"},
+		{Candidate: "candidate:invalid bad UDP 10 192.0.2.4 1234 typ host"},
+		{Candidate: "candidate:4 1 UDP 10 192.0.2.2 3456 typ host"},
+	}
+	got, err := NormalizeICE(input, false)
+	if err != nil || len(got) != 3 {
+		t.Fatalf("got %+v, error %v", got, err)
+	}
+	if !strings.Contains(got[0].Candidate, "console-123.local 2345") || got[0].SDPMid != "video" || got[0].SDPMLineIndex != "1" || !strings.Contains(got[1].Candidate, "192.0.2.2") {
+		t.Fatalf("valid candidates lost: %+v", got)
+	}
+	for _, name := range []string{".local", "-bad.local", "bad-.local", "a.b.local", "bad_.local", "host.example"} {
+		_, err := NormalizeICE([]ICECandidate{{Candidate: "candidate:1 1 UDP 1 " + name + " 1234 typ host"}}, false)
+		if err == nil {
+			t.Errorf("accepted invalid hostname %q", name)
+		}
+	}
+}

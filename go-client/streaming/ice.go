@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/pion/ice/v4"
 )
 
 type ICECandidate struct {
@@ -69,21 +71,43 @@ type parsedCandidate struct {
 // the original client's Teredo, IPv6 preference and priority rules.
 func NormalizeICE(input []ICECandidate, preferIPv6 bool) ([]ICECandidate, error) {
 	var parsed []parsedCandidate
+	var firstErr error
+	hadCandidate := false
 	for _, item := range input {
 		if item.Candidate == "a=end-of-candidates" || item.Candidate == "end-of-candidates" {
 			continue
 		}
+		hadCandidate = true
 		fields := strings.Fields(strings.TrimPrefix(item.Candidate, "a="))
 		if len(fields) < 8 || !strings.HasPrefix(fields[0], "candidate:") || fields[6] != "typ" {
-			return nil, fmt.Errorf("invalid ICE candidate")
+			if firstErr == nil {
+				firstErr = fmt.Errorf("invalid ICE candidate")
+			}
+			continue
 		}
 		ip, err := netip.ParseAddr(fields[4])
 		if err != nil {
-			return nil, fmt.Errorf("invalid ICE address: %w", err)
+			name := strings.ToLower(fields[4])
+			if fields[7] != "host" || !validMDNSName(name) {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("invalid ICE address: %w", err)
+				}
+				continue
+			}
+			fields[4] = name
 		}
 		port, err := strconv.ParseUint(fields[5], 10, 16)
 		if err != nil || port == 0 {
-			return nil, fmt.Errorf("invalid ICE port")
+			if firstErr == nil {
+				firstErr = fmt.Errorf("invalid ICE port")
+			}
+			continue
+		}
+		if _, err := ice.UnmarshalCandidate(strings.Join(fields, " ")); err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("invalid ICE candidate: %w", err)
+			}
+			continue
 		}
 		if item.SDPMLineIndex == "" {
 			item.SDPMLineIndex = "0"
@@ -107,6 +131,9 @@ func NormalizeICE(input []ICECandidate, preferIPv6 bool) ([]ICECandidate, error)
 		}
 		parsed = append(parsed, parsedCandidate{ip, item, fields})
 	}
+	if hadCandidate && len(parsed) == 0 {
+		return nil, firstErr
+	}
 	if preferIPv6 {
 		sort.SliceStable(parsed, func(i, j int) bool { return parsed[i].ip.Is6() && !parsed[j].ip.Is6() })
 	}
@@ -124,4 +151,18 @@ func NormalizeICE(input []ICECandidate, preferIPv6 bool) ([]ICECandidate, error)
 		result = append(result, item.candidate)
 	}
 	return append(result, ICECandidate{Candidate: "a=end-of-candidates", MessageType: "iceCandidate", SDPMLineIndex: "0", SDPMid: "0"}), nil
+}
+
+// Pion resolves single-label host candidates in the .local mDNS domain.
+func validMDNSName(name string) bool {
+	label, ok := strings.CutSuffix(name, ".local")
+	if !ok || len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+		return false
+	}
+	for _, r := range label {
+		if !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '-' {
+			return false
+		}
+	}
+	return true
 }
