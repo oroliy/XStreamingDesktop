@@ -238,3 +238,34 @@ func TestStartupErrorPreservesCleanupFailure(t *testing.T) {
 		t.Fatalf("expected provisioning and cleanup errors, got %v", err)
 	}
 }
+
+func TestConnectionTimeoutAndCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	go monitorConnection(ctx, make(chan struct{}), 10*time.Millisecond, cancel)
+	select {
+	case <-ctx.Done():
+		if !errors.Is(context.Cause(ctx), ErrConnectionTimeout) {
+			t.Fatal(context.Cause(ctx))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("connection did not time out")
+	}
+}
+
+func TestConnectedSessionIsNotTimedOut(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	connected := make(chan struct{})
+	close(connected)
+	done := make(chan struct{})
+	go func() { monitorConnection(ctx, connected, time.Millisecond, cancel); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("monitor did not stop after connection")
+	}
+	if err := context.Cause(ctx); err != nil {
+		t.Fatal(err)
+	}
+}

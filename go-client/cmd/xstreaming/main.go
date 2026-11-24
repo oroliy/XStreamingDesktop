@@ -770,6 +770,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	case <-s.Done():
 	}
 	failed := ctx.Err() == nil
+	connectionTimedOut := failed && errors.Is(s.Err(), session.ErrConnectionTimeout)
 	cleanupErr := s.Close()
 	a.update(func() {
 		a.busy = false
@@ -780,7 +781,13 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		a.frame = nil
 		a.keyboardEnabled = false
 		a.keyboard.Set(false, protocol.Gamepad{})
-		a.status = streamEndStatus(failed, cleanupErr)
+		if connectionTimedOut && cleanupErr == nil {
+			a.status = "Connection timed out; please retry."
+		} else if connectionTimedOut {
+			a.status = "Connection timed out; remote session cleanup failed: " + cleanupErr.Error()
+		} else {
+			a.status = streamEndStatus(failed, cleanupErr)
+		}
 	})
 }
 

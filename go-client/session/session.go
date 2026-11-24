@@ -15,6 +15,8 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+var ErrConnectionTimeout = errors.New("timed out waiting for WebRTC connection")
+
 // CleanupError reports a failure to stop a remote session after startup failed.
 type CleanupError struct{ Err error }
 
@@ -25,7 +27,8 @@ type Session struct {
 	client   *streaming.Client
 	peer     *peer.Peer
 	id       string
-	cancel   context.CancelFunc
+	cancel   context.CancelCauseFunc
+	live     context.Context
 	done     <-chan struct{}
 	once     sync.Once
 	closeErr error
@@ -39,6 +42,7 @@ type Options struct {
 	OnProgress        func(string)
 	OnConnectionState func(webrtc.PeerConnectionState)
 	PreferIPv6        bool
+	ConnectionTimeout time.Duration // zero defaults to 45 seconds after signaling
 }
 
 // Start creates and provisions a session, negotiates SDP and exchanges ICE.
@@ -53,8 +57,8 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 	if err != nil {
 		return nil, err
 	}
-	live, cancel := context.WithCancel(ctx)
-	s := &Session{client: client, id: id, cancel: cancel, done: live.Done()}
+	live, cancel := context.WithCancelCause(ctx)
+	s := &Session{client: client, id: id, cancel: cancel, live: live, done: live.Done()}
 	defer func() {
 		if err != nil {
 			if cleanupErr := s.Close(); cleanupErr != nil {
@@ -72,12 +76,17 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 	if err != nil {
 		return nil, err
 	}
+	connected := make(chan struct{})
+	var connectedOnce sync.Once
 	s.peer.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		if state == webrtc.PeerConnectionStateConnected {
+			connectedOnce.Do(func() { close(connected) })
+		}
 		if opts.OnConnectionState != nil {
 			opts.OnConnectionState(state)
 		}
 		if state == webrtc.PeerConnectionStateFailed {
-			cancel()
+			cancel(errors.New("WebRTC connection failed"))
 		}
 	})
 	s.peer.StartControl(live, opts.OnError)
@@ -123,6 +132,11 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 			return nil, err
 		}
 	}
+	timeout := opts.ConnectionTimeout
+	if timeout <= 0 {
+		timeout = 45 * time.Second
+	}
+	go monitorConnection(live, connected, timeout, cancel)
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
@@ -140,13 +154,16 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 	go func() { <-live.Done(); _ = s.Close() }()
 	return s, nil
 }
+
+// Err reports why the session ended, and is nil while it is active.
+func (s *Session) Err() error                        { return context.Cause(s.live) }
 func (s *Session) Done() <-chan struct{}             { return s.done }
 func (s *Session) Ready() <-chan struct{}            { return s.peer.Ready() }
 func (s *Session) InputChannel() *webrtc.DataChannel { return s.peer.Channel("input") }
 func (s *Session) Input() *peer.InputSender          { return s.peer.Input() }
 func (s *Session) Close() error {
 	s.once.Do(func() {
-		s.cancel()
+		s.cancel(nil)
 		if s.peer != nil {
 			_ = s.peer.Close()
 		}
@@ -155,4 +172,20 @@ func (s *Session) Close() error {
 		s.closeErr = s.client.Stop(ctx, s.id)
 	})
 	return s.closeErr
+}
+
+func monitorConnection(ctx context.Context, connected <-chan struct{}, timeout time.Duration, cancel context.CancelCauseFunc) {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+	case <-connected:
+	case <-timer.C:
+		select {
+		case <-connected:
+		case <-ctx.Done():
+		default:
+			cancel(ErrConnectionTimeout)
+		}
+	}
 }
