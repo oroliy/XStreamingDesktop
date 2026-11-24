@@ -67,17 +67,76 @@ func (p *AudioPlayer) Close() error {
 	return p.err
 }
 
-// ReceiveOpus forwards a remote Opus track to the audio player.
+// ReceiveOpus reorders a small number of late packets before writing Opus audio.
+// When a packet is lost, at most three subsequent packets are held before continuing.
 func ReceiveOpus(track *webrtc.TrackRemote, p *AudioPlayer) error {
+	return receiveOpus(track, p)
+}
+
+type opusWriter interface {
+	WriteRTP(*rtp.Packet) error
+}
+
+func receiveOpus(track rtpReader, out opusWriter) error {
+	const maxPending = 3
+	const maxJump = 64
+	pending := make(map[uint16]*rtp.Packet, maxPending)
+	var next uint16
+	initialized := false
+	drain := func(flush bool) error {
+		for len(pending) > 0 {
+			if packet, ok := pending[next]; ok {
+				if err := out.WriteRTP(packet); err != nil {
+					return err
+				}
+				delete(pending, next)
+				next++
+				continue
+			}
+			if !flush && len(pending) < maxPending {
+				return nil
+			}
+			var nearest uint16
+			best := int32(1 << 16)
+			for seq := range pending {
+				distance := int32(uint16(seq - next))
+				if distance < best {
+					nearest, best = seq, distance
+				}
+			}
+			next = nearest
+		}
+		return nil
+	}
 	for {
 		packet, _, err := track.ReadRTP()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return nil
+				return drain(true)
 			}
 			return err
 		}
-		if err = p.WriteRTP(packet); err != nil {
+		if packet == nil {
+			return errors.New("nil audio packet")
+		}
+		if !initialized {
+			next, initialized = packet.SequenceNumber, true
+		}
+		distance := int16(packet.SequenceNumber - next)
+		if distance < 0 {
+			continue
+		}
+		if distance > maxJump {
+			if err := drain(true); err != nil {
+				return err
+			}
+			if int16(packet.SequenceNumber-next) < 0 {
+				continue
+			}
+			next = packet.SequenceNumber
+		}
+		pending[packet.SequenceNumber] = packet
+		if err := drain(false); err != nil {
 			return err
 		}
 	}
