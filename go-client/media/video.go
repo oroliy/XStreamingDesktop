@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"image/png"
 	"io"
 	"os/exec"
 	"sync"
@@ -34,7 +33,7 @@ func NewVideoDecoder(ctx context.Context, onFrame func(image.Image)) (*VideoDeco
 	if onFrame == nil {
 		return nil, errors.New("frame callback required")
 	}
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-loglevel", "error", "-probesize", "32", "-analyzeduration", "0", "-flags", "low_delay", "-f", "h264", "-i", "pipe:0", "-an", "-f", "image2pipe", "-vcodec", "png", "pipe:1")
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-loglevel", "error", "-probesize", "32", "-analyzeduration", "0", "-flags", "low_delay", "-f", "h264", "-i", "pipe:0", "-an", "-f", "image2pipe", "-vcodec", "ppm", "pipe:1")
 	configureMediaProcess(cmd)
 	return newVideoDecoder(cmd, onFrame)
 }
@@ -56,7 +55,7 @@ func newVideoDecoder(cmd *exec.Cmd, onFrame func(image.Image)) (*VideoDecoder, e
 	d := &VideoDecoder{cmd: cmd, input: stdin, done: make(chan struct{})}
 	go func() {
 		defer close(d.done)
-		reader := bufio.NewReader(stdout)
+		reader := bufio.NewReaderSize(stdout, 64<<10)
 		for {
 			if _, e := reader.Peek(1); errors.Is(e, io.EOF) {
 				break
@@ -67,14 +66,12 @@ func newVideoDecoder(cmd *exec.Cmd, onFrame func(image.Image)) (*VideoDecoder, e
 				_ = cmd.Process.Kill()
 				break
 			}
-			img, e := png.Decode(reader)
+			img, e := readPPMFrame(reader)
 			if e != nil {
-				if !errors.Is(e, io.EOF) {
-					d.mu.Lock()
-					d.err = fmt.Errorf("decode frame: %w", e)
-					d.mu.Unlock()
-					_ = cmd.Process.Kill()
-				}
+				d.mu.Lock()
+				d.err = fmt.Errorf("decode frame: %w", e)
+				d.mu.Unlock()
+				_ = cmd.Process.Kill()
 				break
 			}
 			onFrame(img)

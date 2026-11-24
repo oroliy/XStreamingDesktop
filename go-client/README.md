@@ -19,7 +19,7 @@ On Linux, the stream view can explicitly enable or disable a PulseAudio micropho
 
 After a connection is established, the client allows 30 seconds for a disconnected connection to recover. If it does not recover, the client ends the session and attempts remote cleanup; a cleanup failure is shown in the interface.
 
-The experimental `media` package can depacketize H.264 RTP and decode H.264 video frames using an `ffmpeg` executable on PATH. The preview UI uses this decoder; it uses software decoding and has not been benchmarked for streaming latency. Opus audio uses `ffplay` and an available audio device, with a small reorder buffer for late packets; audio/video synchronization and latency have not been validated.
+The experimental `media` package can depacketize H.264 RTP and decode H.264 video frames using an `ffmpeg` executable on PATH. The preview UI uses software decoding and transfers uncompressed RGB frames from FFmpeg, avoiding per-frame PNG compression at the cost of greater pipe bandwidth. Streaming latency has not been benchmarked. Opus audio uses `ffplay` and an available audio device, with a small reorder buffer for late packets; audio/video synchronization and latency have not been validated.
 
 The preview reads up to four controllers through MyGo’s gamepad plugin. Linux requires permission to read the relevant `/dev/input` device. Polling-rate changes apply to the next stream; higher rates increase processing and network activity. Rumble is not yet supported.
 

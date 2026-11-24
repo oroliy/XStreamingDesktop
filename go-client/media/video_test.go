@@ -44,6 +44,10 @@ func TestVideoDecoder(t *testing.T) {
 	if frame.Bounds().Dx() != 32 || frame.Bounds().Dy() != 32 {
 		t.Fatal(frame.Bounds())
 	}
+	r, g, b, _ := frame.At(0, 0).RGBA()
+	if r < 50000 || g > 5000 || b > 5000 {
+		t.Fatalf("unexpected decoded color: %d %d %d", r, g, b)
+	}
 }
 
 // The decoder must emit frames while the input remains open for a live stream.
@@ -98,7 +102,7 @@ func mediaTestUnavailable(t *testing.T, format string, args ...any) {
 func TestVideoDecoderStopsAfterInvalidFrame(t *testing.T) {
 	if os.Getenv("XSTREAMING_BAD_DECODER") == "1" {
 		for {
-			if _, err := os.Stdout.Write([]byte("invalid PNG data")); err != nil {
+			if _, err := os.Stdout.Write([]byte("invalid frame data")); err != nil {
 				os.Exit(0)
 			}
 		}
