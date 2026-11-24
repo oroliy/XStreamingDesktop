@@ -19,7 +19,7 @@ var chinese = map[string]string{
 var chinesePrefixes = []struct{ en, zh string }{
 	{"ffmpeg is required for streaming; install FFmpeg and add it to PATH: ", "串流需要 ffmpeg；请安装 FFmpeg 并加入 PATH："},
 	{"ffplay is required for streaming; install FFmpeg and add it to PATH: ", "串流需要 ffplay；请安装 FFmpeg 并加入 PATH："},
-	{"Sign-in failed: ", "登录失败："}, {"Stream failed: ", "串流启动失败："}, {"Stream error: ", "串流错误："}, {"Wake request failed: ", "唤醒请求失败："}, {"Unable to refresh consoles: ", "无法刷新主机："}, {"Unable to save settings: ", "无法保存设置："}, {"Signed out locally; unable to remove saved login: ", "已在本次运行中退出，但无法删除已保存的登录信息："},
+	{"Estimated queue wait: ", "预计排队时间（分钟）："}, {"Sign-in failed: ", "登录失败："}, {"Stream failed: ", "串流启动失败："}, {"Stream error: ", "串流错误："}, {"Wake request failed: ", "唤醒请求失败："}, {"Unable to refresh consoles: ", "无法刷新主机："}, {"Unable to save settings: ", "无法保存设置："}, {"Signed out locally; unable to remove saved login: ", "已在本次运行中退出，但无法删除已保存的登录信息："},
 }
 
 func (a *app) tr(text string) string {
@@ -35,7 +35,11 @@ func (a *app) tr(text string) string {
 	}
 	for _, item := range chinesePrefixes {
 		if strings.HasPrefix(text, item.en) {
-			return item.zh + strings.TrimPrefix(text, item.en)
+			suffix := strings.TrimPrefix(text, item.en)
+			if item.en == "Estimated queue wait: " {
+				suffix = strings.TrimSuffix(suffix, " minute(s).")
+			}
+			return item.zh + suffix
 		}
 	}
 	if strings.HasPrefix(text, "Signed in. Found ") || strings.HasPrefix(text, "Found ") {

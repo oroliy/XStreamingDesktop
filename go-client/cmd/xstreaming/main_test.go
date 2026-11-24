@@ -218,3 +218,10 @@ func TestChineseInterface(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestQueueWaitTranslation(t *testing.T) {
+	a := &app{prefs: settings.Settings{UILanguage: "简体中文"}}
+	if got := a.tr("Estimated queue wait: 3 minute(s)."); got != "预计排队时间（分钟）：3" {
+		t.Fatal(got)
+	}
+}

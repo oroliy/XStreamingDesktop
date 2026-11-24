@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -650,6 +651,22 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 				a.status = text
 			}
 		})
+		if state == "WaitingForResources" {
+			go func() {
+				waitCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+				defer cancel()
+				wait, err := client.WaitTime(waitCtx, target)
+				if err != nil || ctx.Err() != nil {
+					return
+				}
+				minutes := int((wait + time.Minute - 1) / time.Minute)
+				a.update(func() {
+					if ctx.Err() == nil && a.busy && a.streamCancel != nil && a.status == "Waiting for available capacity…" {
+						a.status = fmt.Sprintf("Estimated queue wait: %d minute(s).", minutes)
+					}
+				})
+			}()
+		}
 	}, RTC: webrtc.Configuration{ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:worldaz.relay.teams.microsoft.com:3478"}}}}, OnTrack: track, OnError: onError, PreferIPv6: prefs.PreferIPv6, OnConnectionState: func(state webrtc.PeerConnectionState) {
 		if ctx.Err() != nil {
 			return
