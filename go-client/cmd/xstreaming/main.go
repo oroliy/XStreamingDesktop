@@ -715,11 +715,19 @@ func (a *app) sendConsoleText(ctx context.Context, credentials *auth.Session, id
 	})
 }
 
-func (a *app) powerOffConsole(ctx context.Context, credentials *auth.Session, id string) {
+func requestConsolePowerOff(ctx context.Context, credentials *auth.Session, id string) error {
 	token, err := credentials.WebToken(ctx)
-	if err == nil {
-		err = remote.NewClient().PowerOff(ctx, id, token)
+	if err != nil {
+		return err
 	}
+	return remote.NewClient().PowerOff(ctx, id, token)
+}
+
+func (a *app) powerOffConsole(ctx context.Context, credentials *auth.Session, id string) {
+	a.showPowerOffResult(ctx, requestConsolePowerOff(ctx, credentials, id))
+}
+
+func (a *app) showPowerOffResult(ctx context.Context, err error) {
 	a.update(func() {
 		if ctx.Err() != nil {
 			return
@@ -756,18 +764,22 @@ func (a *app) stopStream(powerOff bool) {
 		ctx, credentials, id := a.accountCtx, a.credentials, a.streamHomeID
 		flag.Store(true)
 		go func() {
-			if err := waitForStreamCleanup(ctx, done); err != nil {
-				if ctx.Err() == nil {
-					a.update(func() {
-						if ctx.Err() == nil {
-							a.busy = false
-							a.status = "Stream cleanup failed; console was not powered off: " + err.Error()
-						}
-					})
-				}
+			cleaned, err := powerOffAfterCleanup(ctx, done, func(ctx context.Context) error {
+				return requestConsolePowerOff(ctx, credentials, id)
+			})
+			if ctx.Err() != nil {
 				return
 			}
-			a.powerOffConsole(ctx, credentials, id)
+			if !cleaned {
+				a.update(func() {
+					if ctx.Err() == nil {
+						a.busy = false
+						a.status = "Stream cleanup failed; console was not powered off: " + err.Error()
+					}
+				})
+				return
+			}
+			a.showPowerOffResult(ctx, err)
 		}()
 	}
 	if a.fullscreen && a.win != nil {
@@ -797,6 +809,17 @@ func waitForStreamCleanup(ctx context.Context, done <-chan error) error {
 	case err := <-done:
 		return err
 	}
+}
+
+// powerOffAfterCleanup never sends the command when cleanup failed or was canceled.
+func powerOffAfterCleanup(ctx context.Context, done <-chan error, powerOff func(context.Context) error) (bool, error) {
+	if err := waitForStreamCleanup(ctx, done); err != nil {
+		return false, err
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	return true, powerOff(ctx)
 }
 
 // startStreamAsync is called on the UI thread before shutdown can begin waiting.

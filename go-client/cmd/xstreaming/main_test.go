@@ -443,3 +443,43 @@ func TestConsoleTextHiddenForKeyboardController(t *testing.T) {
 		t.Fatal("text control overlaps keyboard controller mode")
 	}
 }
+
+func TestPowerOffRunsOnlyAfterSuccessfulCleanup(t *testing.T) {
+	done := make(chan error, 1)
+	called := make(chan struct{}, 1)
+	result := make(chan error, 1)
+	go func() {
+		_, err := powerOffAfterCleanup(context.Background(), done, func(context.Context) error { called <- struct{}{}; return nil })
+		result <- err
+	}()
+	select {
+	case <-called:
+		t.Fatal("power-off sent before cleanup")
+	case <-time.After(20 * time.Millisecond):
+	}
+	done <- nil
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-called:
+	default:
+		t.Fatal("power-off not sent after cleanup")
+	}
+
+	failure := errors.New("cleanup failed")
+	failed := make(chan error, 1)
+	failed <- failure
+	cleaned, err := powerOffAfterCleanup(context.Background(), failed, func(context.Context) error { t.Error("power-off sent after failed cleanup"); return nil })
+	if cleaned || !errors.Is(err, failure) {
+		t.Fatalf("cleaned=%v error=%v", cleaned, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ready := make(chan error, 1)
+	ready <- nil
+	cleaned, err = powerOffAfterCleanup(ctx, ready, func(context.Context) error { t.Error("power-off sent after cancellation"); return nil })
+	if cleaned || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cleaned=%v error=%v", cleaned, err)
+	}
+}
