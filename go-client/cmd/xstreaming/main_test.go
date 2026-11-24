@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/egoist/mygo/ui"
 	"github.com/oroliy/XStreamingDesktop/go-client/auth"
 	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
@@ -303,5 +304,32 @@ func TestCloudAndExpiredSignInTranslations(t *testing.T) {
 	}
 	if got := a.tr("Unable to connect to cloud games: connection failed"); got != "无法连接云游戏：connection failed" {
 		t.Fatal(got)
+	}
+}
+
+func TestCloudCatalogPaginationAndSearch(t *testing.T) {
+	var titles []streaming.Title
+	for i := range 85 {
+		titles = append(titles, streaming.Title{TitleID: fmt.Sprintf("id-%d", i), Name: fmt.Sprintf("Game %03d", i)})
+	}
+	a := &app{prefs: settings.Defaults(), titles: titles}
+	tt := ui.NewTester(a.view, 1024, 1200)
+	if !tt.HasText("Game 000") || tt.HasText("Game 040") || !tt.HasText("Games 1–40 of 85") {
+		t.Fatalf("unexpected first page: %v", tt.Texts())
+	}
+	if err := tt.Click("Next games"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tt.HasText("Game 000") || !tt.HasText("Game 040") || !tt.HasText("Games 41–80 of 85") {
+		t.Fatalf("unexpected second page: %v", tt.Texts())
+	}
+	if err := tt.Click("Search games"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("084")
+	tt.Frame()
+	if a.cloudPage != 0 || !tt.HasText("Game 084") || !tt.HasText("Games 1–1 of 1") {
+		t.Fatalf("search did not reset page: page=%d %v", a.cloudPage, tt.Texts())
 	}
 }

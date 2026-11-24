@@ -50,6 +50,7 @@ type app struct {
 	prefs             settings.Settings
 	settingsPath      string
 	filter            string
+	cloudPage         int
 	keyboard          controller.Keyboard
 	keyboardEnabled   bool
 	fullscreen        bool
@@ -250,7 +251,9 @@ func (a *app) view(c *ui.Context) {
 				}
 			})
 			ui.Text(c, a.tr("Cloud games")).Bold()
-			ui.TextInput(c.Key("search"), &a.filter).Placeholder(a.tr("Search games")).Label(a.tr("Search games")).Width(320)
+			if ui.TextInput(c.Key("search"), &a.filter).Placeholder(a.tr("Search games")).Label(a.tr("Search games")).Width(320).Changed() {
+				a.cloudPage = 0
+			}
 			if a.credentials != nil && a.accountCtx != nil && !a.busy && a.streamCancel == nil {
 				if ui.Button(c.Key("reload-cloud"), a.tr("Reload cloud catalog")).Clicked() {
 					a.startCloudLoad(a.accountCtx, a.credentials, a.prefs)
@@ -259,13 +262,29 @@ func (a *app) view(c *ui.Context) {
 			if a.cloudStatus != "" {
 				ui.Text(c, a.tr(a.cloudStatus))
 			}
-			for index, title := range a.titles {
-				if title.TitleID == "" || !strings.Contains(strings.ToLower(title.Name), strings.ToLower(strings.TrimSpace(a.filter))) {
-					continue
-				}
+			matches := filterCloudTitles(a.titles, a.filter)
+			const pageSize = 40
+			lastPage := max(0, (len(matches)-1)/pageSize)
+			a.cloudPage = min(max(a.cloudPage, 0), lastPage)
+			start := a.cloudPage * pageSize
+			end := min(start+pageSize, len(matches))
+			if len(matches) > 0 {
+				ui.Row(c).Gap(8).Children(func() {
+					if a.cloudPage > 0 && ui.Button(c.Key("cloud-previous"), a.tr("Previous games")).Clicked() {
+						a.cloudPage--
+					}
+					ui.Text(c, fmt.Sprintf(a.tr("Games %d–%d of %d"), start+1, end, len(matches)))
+					if a.cloudPage < lastPage && ui.Button(c.Key("cloud-next"), a.tr("Next games")).Clicked() {
+						a.cloudPage++
+					}
+				})
+			} else if a.filter != "" {
+				ui.Text(c, a.tr("No matching games."))
+			}
+			for index, title := range matches[start:end] {
 				ui.Text(c, title.Name)
 				if !a.busy && a.streamCancel == nil && a.cloud != nil {
-					if ui.Button(c.Key(fmt.Sprintf("cloud-%d-%s", index, title.TitleID)), a.tr("Play")).Clicked() {
+					if ui.Button(c.Key(fmt.Sprintf("cloud-%d-%s", start+index, title.TitleID)), a.tr("Play")).Clicked() {
 						ctx, cancel := context.WithCancel(a.ctx)
 						a.streamCancel = cancel
 						a.busy = true
@@ -520,6 +539,7 @@ func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs se
 		if ctx.Err() == nil && a.cloudGeneration.Load() == generation {
 			a.cloud = client
 			a.titles = names
+			a.cloudPage = 0
 			a.cloudStatus = fmt.Sprintf("%d games", len(names))
 			if catalogUnavailable {
 				a.cloudStatus += " (catalog unavailable; showing IDs)"
@@ -527,6 +547,17 @@ func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs se
 		}
 	})
 }
+func filterCloudTitles(titles []streaming.Title, filter string) []streaming.Title {
+	filter = strings.ToLower(strings.TrimSpace(filter))
+	matches := make([]streaming.Title, 0, len(titles))
+	for _, title := range titles {
+		if title.TitleID != "" && strings.Contains(strings.ToLower(title.Name), filter) {
+			matches = append(matches, title)
+		}
+	}
+	return matches
+}
+
 func playableTitles(titles []streaming.Title) []streaming.Title {
 	out := make([]streaming.Title, 0, len(titles))
 	for _, title := range titles {

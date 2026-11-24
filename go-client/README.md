@@ -19,7 +19,7 @@ The experimental `media` package can depacketize H.264 RTP and decode H.264 vide
 
 The preview reads up to four controllers through MyGo’s gamepad plugin. Linux requires permission to read the relevant `/dev/input` device. Polling-rate changes apply to the next stream; higher rates increase processing and network activity. Rumble is not yet supported.
 
-Cloud catalog market and language and streaming resolution are configurable in the preview. The catalog reloads automatically after changing market or language. If catalog lookup fails, the preview displays product IDs. Cloud access depends on account entitlements and region.
+Cloud catalog market and language and streaming resolution are configurable in the preview. The catalog reloads automatically after changing market or language. The game list supports search and pagination. If catalog lookup fails, the preview displays product IDs. Cloud access depends on account entitlements and region.
 
 Login persistence uses MyGo Secrets (Keychain, Windows Credential Manager or Linux Secret Service). If unavailable, sign-in works for the current run without persistence.
 
