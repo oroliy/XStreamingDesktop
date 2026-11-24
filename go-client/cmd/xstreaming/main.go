@@ -67,10 +67,21 @@ type app struct {
 	keyboard          controller.Keyboard
 	keyboardEnabled   bool
 	fullscreen        bool
+	controlsHidden    bool
 }
 
 func (a *app) view(c *ui.Context) {
 	ui.Column(c).Fill().Center().Gap(12).Children(func() {
+		if a.streamCancel != nil && a.controlsHidden {
+			if a.frame != nil {
+				ui.Image(c, a.frame).FillWidth().Grow(1).Fit(videoFit(a.prefs.VideoFit))
+			}
+			if ui.Button(c.Key("show-stream-controls"), a.tr("Show controls")).Clicked() {
+				a.controlsHidden = false
+			}
+			a.captureKeyboard(c, false)
+			return
+		}
 		ui.Text(c, "XStreaming").FontSize(32).Bold()
 		ui.Text(c, a.tr("Experimental preview — controller and playback support are unverified."))
 		if a.frame != nil {
@@ -78,6 +89,9 @@ func (a *app) view(c *ui.Context) {
 			ui.Text(c, fmt.Sprintf(a.tr("Decoded video: %.1f FPS"), a.decodedFPS))
 		}
 		if a.streamCancel != nil {
+			if ui.Button(c.Key("hide-stream-controls"), a.tr("Hide controls")).Clicked() {
+				a.controlsHidden = true
+			}
 			ui.Row(c).Gap(8).Children(func() {
 				ui.Text(c, a.tr("Video display"))
 				label := a.tr(a.prefs.VideoFit)
@@ -172,20 +186,7 @@ func (a *app) view(c *ui.Context) {
 					ui.Text(c, a.tr(a.textStatus))
 				}
 			}
-			if a.keyboardEnabled {
-				a.keyboard.Set(true, controller.MapKeys(c.KeyDown))
-				ui.Box(c.Key("keyboard-capture")).Focusable().AutoFocus().Label(a.tr("Keyboard controller")).HandleInput(func(ev ui.InputEvent) bool {
-					if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEscape {
-						a.keyboardEnabled = false
-						a.keyboard.Set(false, protocol.Gamepad{})
-					}
-					return ev.Kind == ui.InputKeyDown || ev.Kind == ui.InputKeyUp
-				}).Children(func() {
-					ui.Text(c, a.tr("WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable"))
-				})
-			} else {
-				a.keyboard.Set(false, protocol.Gamepad{})
-			}
+			a.captureKeyboard(c, true)
 			return
 		}
 		if !a.busy && a.code == "" && a.credentials == nil {
@@ -249,6 +250,7 @@ func (a *app) view(c *ui.Context) {
 					if ui.Button(c.Key(console.ServerID), a.tr("Start stream")).Clicked() {
 						ctx, cancel := context.WithCancel(a.ctx)
 						a.streamCancel = cancel
+						a.controlsHidden = false
 						a.streamConnected = false
 						a.consoleText, a.textStatus, a.textSending = "", "", false
 						a.busy = true
@@ -375,6 +377,7 @@ func (a *app) view(c *ui.Context) {
 					if ui.Button(c.Key(fmt.Sprintf("cloud-%d-%s", start+index, title.TitleID)), a.tr("Play")).Clicked() {
 						ctx, cancel := context.WithCancel(a.ctx)
 						a.streamCancel = cancel
+						a.controlsHidden = false
 						a.streamConnected = false
 						a.consoleText, a.textStatus, a.textSending = "", "", false
 						a.busy = true
@@ -386,6 +389,25 @@ func (a *app) view(c *ui.Context) {
 				}
 			}
 		})
+	})
+}
+
+func (a *app) captureKeyboard(c *ui.Context, showHelp bool) {
+	if !a.keyboardEnabled {
+		a.keyboard.Set(false, protocol.Gamepad{})
+		return
+	}
+	a.keyboard.Set(true, controller.MapKeys(c.KeyDown))
+	ui.Box(c.Key("keyboard-capture")).Focusable().AutoFocus().Label(a.tr("Keyboard controller")).HandleInput(func(ev ui.InputEvent) bool {
+		if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEscape {
+			a.keyboardEnabled = false
+			a.keyboard.Set(false, protocol.Gamepad{})
+		}
+		return ev.Kind == ui.InputKeyDown || ev.Kind == ui.InputKeyUp
+	}).Children(func() {
+		if showHelp {
+			ui.Text(c, a.tr("WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable"))
+		}
 	})
 }
 
@@ -826,6 +848,7 @@ func (a *app) stopStream(powerOff bool) {
 	}
 	a.streamCancel()
 	a.streamCancel = nil
+	a.controlsHidden = false
 	a.streamConnected = false
 	a.inputReady = false
 	a.consoleText, a.textStatus, a.textSending = "", "", false
@@ -1173,6 +1196,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		}
 		a.busy = false
 		a.streamCancel = nil
+		a.controlsHidden = false
 		if a.fullscreen && a.win != nil {
 			a.win.SetFullScreen(false)
 		}

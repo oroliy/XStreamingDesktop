@@ -512,6 +512,49 @@ func TestVideoDisplaySetting(t *testing.T) {
 	}
 }
 
+func TestHiddenStreamControlsKeepKeyboardInput(t *testing.T) {
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := &app{prefs: settings.Defaults(), streamCancel: cancel, frame: ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 16, 9)))}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if err := tt.Click("Enable keyboard controller"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Hide controls"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Show controls") || tt.HasText("Stop stream") {
+		t.Fatalf("unexpected hidden controls: %v", tt.Texts())
+	}
+	tt.KeyDown(ui.KeyK)
+	if enabled, state := a.keyboard.Snapshot(); !enabled || state.Buttons&protocol.A == 0 {
+		t.Fatal("keyboard input not captured with controls hidden")
+	}
+	tt.KeyUp(ui.KeyK)
+	if err := tt.Click("Show controls"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Stop stream") || !a.keyboardEnabled {
+		t.Fatal("controls or keyboard mode did not return")
+	}
+}
+
+func TestHideControlsInSmallWindow(t *testing.T) {
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := &app{prefs: settings.Defaults(), streamCancel: cancel, frame: ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 16, 9)))}
+	tt := ui.NewTester(a.view, 640, 480)
+	if err := tt.Click("Hide controls"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Show controls"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPowerOffRunsOnlyAfterSuccessfulCleanup(t *testing.T) {
 	done := make(chan error, 1)
 	called := make(chan struct{}, 1)

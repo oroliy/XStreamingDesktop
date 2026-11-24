@@ -7,6 +7,7 @@ var chinese = map[string]string{
 	"Full screen": "全屏", "Exit full screen": "退出全屏", "Stop stream": "停止串流", "Disconnect and power off": "断开连接并关机", "Cancel sign-in": "取消登录",
 	"Press Xbox button": "短按 Xbox 按钮", "Hold Xbox button": "长按 Xbox 按钮",
 	"Video display": "画面显示", "Fit": "适应", "Crop": "裁剪填满", "Stretch": "拉伸",
+	"Hide controls": "收起控制栏", "Show controls": "显示控制栏",
 	"Connection did not recover; please retry.": "连接未能恢复，请重试。",
 	"Open Microsoft sign-in page":               "打开微软登录页面", "Enable keyboard controller": "启用键盘手柄", "Disable keyboard controller": "停用键盘手柄",
 	"WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable": "WASD：左摇杆 · TFGH：右摇杆 · IJKL：面键 · 方向键：方向键 · Esc：退出",
