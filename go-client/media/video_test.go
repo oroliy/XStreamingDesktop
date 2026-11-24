@@ -1,13 +1,19 @@
 package media
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"image"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pion/interceptor"
+	"github.com/pion/rtp"
 )
 
 func TestVideoDecoder(t *testing.T) {
@@ -106,5 +112,43 @@ func TestVideoDecoderStopsAfterInvalidFrame(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("decoder did not stop after invalid output")
+	}
+}
+
+type packetReader struct {
+	packets []*rtp.Packet
+	err     error
+}
+
+func (r *packetReader) ReadRTP() (*rtp.Packet, interceptor.Attributes, error) {
+	if len(r.packets) == 0 {
+		return nil, nil, r.err
+	}
+	p := r.packets[0]
+	r.packets = r.packets[1:]
+	return p, nil, nil
+}
+
+type shortWriter struct{}
+
+func (shortWriter) Write(p []byte) (int, error) { return len(p) - 1, nil }
+
+func TestReceiveH264FlushesLastSample(t *testing.T) {
+	packet := &rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: 1, Timestamp: 100, Marker: true}, Payload: []byte{0x65, 1, 2}}
+	r := &packetReader{packets: []*rtp.Packet{packet}, err: io.EOF}
+	var out bytes.Buffer
+	if err := receiveH264(r, &out); err != nil {
+		t.Fatal(err)
+	}
+	if want := []byte{0, 0, 0, 1, 0x65, 1, 2}; !bytes.Equal(out.Bytes(), want) {
+		t.Fatalf("got %x, want %x", out.Bytes(), want)
+	}
+}
+
+func TestReceiveH264ReportsShortWrite(t *testing.T) {
+	packet := &rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: 1, Timestamp: 100, Marker: true}, Payload: []byte{0x65, 1, 2}}
+	r := &packetReader{packets: []*rtp.Packet{packet}, err: io.EOF}
+	if err := receiveH264(r, shortWriter{}); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("got %v", err)
 	}
 }

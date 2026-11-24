@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"sync"
 
+	"github.com/pion/interceptor"
+	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media/samplebuilder"
@@ -98,24 +100,42 @@ func (d *VideoDecoder) Close() error {
 // ReceiveH264 reads RTP from a Pion track and writes depacketized H.264 samples.
 // RTP loss and reordering are handled by Pion's bounded sample builder.
 func ReceiveH264(track *webrtc.TrackRemote, out io.Writer) error {
+	return receiveH264(track, out)
+}
+
+type rtpReader interface {
+	ReadRTP() (*rtp.Packet, interceptor.Attributes, error)
+}
+
+func receiveH264(track rtpReader, out io.Writer) error {
 	builder := samplebuilder.New(128, &codecs.H264Packet{}, 90000)
+	drain := func() error {
+		for {
+			sample := builder.Pop()
+			if sample == nil {
+				return nil
+			}
+			n, err := out.Write(sample.Data)
+			if err != nil {
+				return err
+			}
+			if n != len(sample.Data) {
+				return io.ErrShortWrite
+			}
+		}
+	}
 	for {
 		packet, _, err := track.ReadRTP()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return nil
+				builder.Flush()
+				return drain()
 			}
 			return err
 		}
 		builder.Push(packet)
-		for {
-			sample := builder.Pop()
-			if sample == nil {
-				break
-			}
-			if _, err = out.Write(sample.Data); err != nil {
-				return err
-			}
+		if err = drain(); err != nil {
+			return err
 		}
 	}
 }
