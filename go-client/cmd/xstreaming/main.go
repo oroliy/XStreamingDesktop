@@ -287,7 +287,7 @@ func (a *app) view(c *ui.Context) {
 				}()
 			}
 		}
-		ui.Scroll(c.Key("library")).Grow(1).Width(680).Gap(8).Children(func() {
+		ui.Scroll(c.Key("library")).Grow(1).FillWidth().Gap(8).Children(func() {
 			ui.Text(c, a.tr("Consoles")).Bold()
 			if a.credentials != nil && !a.busy && a.streamCancel == nil {
 				if ui.Button(c.Key("refresh-consoles"), a.tr("Refresh consoles")).Clicked() {
@@ -332,13 +332,13 @@ func (a *app) view(c *ui.Context) {
 					if a.micSourceChoice == "" {
 						a.micSourceChoice = selected
 					}
-					if ui.Select(c.Key("microphone-sources"), &a.micSourceChoice, options).Label(a.tr("Available microphone inputs")).Width(280).Changed() {
+					if ui.Select(c.Key("microphone-sources"), &a.micSourceChoice, options).Label(a.tr("Available microphone inputs")).Width(200).Changed() {
 						a.micSourceDraft = names[a.micSourceChoice]
 					}
-					if ui.Button(c.Key("refresh-microphone-sources"), a.tr("Refresh microphone inputs")).Disabled(a.micSourcesLoading).Clicked() {
-						a.refreshMicrophoneSources()
-					}
 				})
+				if ui.Button(c.Key("refresh-microphone-sources"), a.tr("Refresh microphone inputs")).Disabled(a.micSourcesLoading).Clicked() {
+					a.refreshMicrophoneSources()
+				}
 				if a.micSourcesStatus != "" {
 					ui.Text(c, a.tr(a.micSourcesStatus))
 				}
@@ -368,22 +368,27 @@ func (a *app) view(c *ui.Context) {
 					}
 				}
 			})
+			var changed, languageChanged, marketChanged bool
 			ui.Row(c).Gap(8).Children(func() {
 				ui.Text(c, a.tr("Resolution"))
-				changed := ui.Select(c.Key("resolution"), &a.prefs.Resolution, []string{"720p", "1080p", "1080p HQ"}).Changed()
-				ui.Text(c, a.tr("Language"))
-				languageChanged := ui.Select(c.Key("language"), &a.prefs.Language, settings.GameLanguages()).Changed()
-				ui.Text(c, a.tr("Market"))
-				marketChanged := ui.Select(c.Key("market"), &a.prefs.Market, settings.CatalogMarkets()).Changed()
-				if (languageChanged || marketChanged) && a.credentials != nil && a.accountCtx != nil && a.accountCtx.Err() == nil && a.streamCancel == nil {
-					a.startCloudLoad(a.accountCtx, a.credentials, a.prefs)
-				}
-				if (changed || languageChanged || marketChanged) && a.settingsPath != "" {
-					if err := settings.Save(a.settingsPath, a.prefs); err != nil {
-						a.status = "Unable to save settings: " + err.Error()
-					}
-				}
+				changed = ui.Select(c.Key("resolution"), &a.prefs.Resolution, []string{"720p", "1080p", "1080p HQ"}).Width(140).Changed()
 			})
+			ui.Row(c).Gap(8).Children(func() {
+				ui.Text(c, a.tr("Language"))
+				languageChanged = ui.Select(c.Key("language"), &a.prefs.Language, settings.GameLanguages()).Width(140).Changed()
+			})
+			ui.Row(c).Gap(8).Children(func() {
+				ui.Text(c, a.tr("Market"))
+				marketChanged = ui.Select(c.Key("market"), &a.prefs.Market, settings.CatalogMarkets()).Width(140).Changed()
+			})
+			if (languageChanged || marketChanged) && a.credentials != nil && a.accountCtx != nil && a.accountCtx.Err() == nil && a.streamCancel == nil {
+				a.startCloudLoad(a.accountCtx, a.credentials, a.prefs)
+			}
+			if (changed || languageChanged || marketChanged) && a.settingsPath != "" {
+				if err := settings.Save(a.settingsPath, a.prefs); err != nil {
+					a.status = "Unable to save settings: " + err.Error()
+				}
+			}
 			if a.credentials != nil {
 				ui.Row(c).Gap(8).Children(func() {
 					ui.Text(c, a.tr("Cloud region"))

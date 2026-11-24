@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"image"
+	"runtime"
 	"sync/atomic"
 	"testing"
 
@@ -49,5 +50,29 @@ func TestStreamControlsFitNarrowWindow(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSettingsFitNarrowWindow(t *testing.T) {
+	a := &app{prefs: settings.Defaults()}
+	tt := ui.NewTester(a.view, 480, 480)
+	labels := []string{"Resolution"}
+	if microphoneSourceSettingsSupported(runtime.GOOS) {
+		labels = append(labels, "Microphone input", "Refresh microphone inputs")
+	}
+	for _, text := range labels {
+		r, ok := tt.Find(text)
+		if !ok || r.W < 50 || r.H < 19 || r.X < 0 || r.X+r.W > 480 {
+			t.Errorf("%s is clipped: %+v, found=%v", text, r, ok)
+		}
+	}
+	if microphoneSourceSettingsSupported(runtime.GOOS) {
+		tt.Scroll(240, 350, 0, 170)
+	}
+	for _, text := range []string{"Language", "Market"} {
+		r, ok := tt.Find(text)
+		if !ok || r.W < 40 || r.H < 19 || r.X < 0 || r.X+r.W > 480 || r.Y < 0 || r.Y+r.H > 480 {
+			t.Errorf("%s is clipped after scrolling: %+v, found=%v", text, r, ok)
+		}
 	}
 }
