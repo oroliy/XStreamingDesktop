@@ -54,6 +54,12 @@ func TestLibraryAndStop(t *testing.T) {
 	if !enabled || state.LeftY != -1 {
 		t.Fatalf("keyboard: %+v", state)
 	}
+	tt.SetFocused(false)
+	_, unfocused := a.keyboard.Snapshot()
+	if unfocused.LeftY != 0 {
+		t.Fatal("focus loss left a key held")
+	}
+	tt.SetFocused(true)
 	tt.KeyUp(ui.KeyW)
 	tt.KeyDown(ui.KeyEnter)
 	_, enter := a.keyboard.Snapshot()

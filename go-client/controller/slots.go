@@ -12,6 +12,10 @@ func (s *slotTracker) update(pads []*gamepad.Pad, keyboard bool) (added, removed
 	if s.pads == nil {
 		s.pads = make(map[*gamepad.Pad]uint8)
 	}
+	var previous [4]*gamepad.Pad
+	for pad, slot := range s.pads {
+		previous[slot] = pad
+	}
 	present := make(map[*gamepad.Pad]bool, len(pads))
 	for _, pad := range pads {
 		present[pad] = true
@@ -37,11 +41,20 @@ func (s *slotTracker) update(pads []*gamepad.Pad, keyboard bool) (added, removed
 			}
 		}
 	}
+	var current [4]*gamepad.Pad
+	for pad, slot := range s.pads {
+		current[slot] = pad
+	}
 	desired := occupied
 	if keyboard {
 		desired[0] = true
 	}
 	for i, want := range desired {
+		if s.active[i] && want && previous[i] != nil && current[i] != nil && previous[i] != current[i] {
+			removed = append(removed, uint8(i))
+			added = append(added, uint8(i))
+			continue
+		}
 		if want && !s.active[i] {
 			added = append(added, uint8(i))
 		}

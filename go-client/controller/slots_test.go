@@ -45,3 +45,13 @@ func TestSlotLimit(t *testing.T) {
 		t.Fatal(added, tracker.pads)
 	}
 }
+
+func TestReplacementInSamePollResetsSlot(t *testing.T) {
+	var tracker slotTracker
+	first, second := new(gamepad.Pad), new(gamepad.Pad)
+	tracker.update([]*gamepad.Pad{first}, false)
+	added, removed := tracker.update([]*gamepad.Pad{second}, false)
+	if !reflect.DeepEqual(removed, []uint8{0}) || !reflect.DeepEqual(added, []uint8{0}) {
+		t.Fatal(added, removed)
+	}
+}
