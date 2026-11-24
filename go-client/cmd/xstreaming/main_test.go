@@ -555,6 +555,39 @@ func TestHideControlsInSmallWindow(t *testing.T) {
 	}
 }
 
+func TestHiddenControlsShowConnectionProblems(t *testing.T) {
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := &app{prefs: settings.Defaults(), streamCancel: cancel, controlsHidden: true, status: "Connection interrupted…", wakeWarning: "Wake request failed; continuing stream: unavailable"}
+	tt := ui.NewTester(a.view, 640, 480)
+	if !tt.HasText(a.status) || !tt.HasText(a.wakeWarning) {
+		t.Fatalf("missing stream warnings: %v", tt.Texts())
+	}
+	a.status = "Streaming video."
+	a.wakeWarning = ""
+	tt.Frame()
+	if tt.HasText(a.status) {
+		t.Fatal("normal playback status occupied the hidden controls view")
+	}
+}
+
+func TestKeyboardControllerReleasesKeysOnWindowBlur(t *testing.T) {
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := &app{prefs: settings.Defaults(), streamCancel: cancel, controlsHidden: true, keyboardEnabled: true}
+	tt := ui.NewTester(a.view, 640, 480)
+	tt.SetFocused(true)
+	tt.KeyDown(ui.KeyW)
+	tt.KeyDown(ui.KeyK)
+	if enabled, state := a.keyboard.Snapshot(); !enabled || state.LeftY != -1 || state.Buttons&protocol.A == 0 {
+		t.Fatalf("keys were not captured: %+v", state)
+	}
+	tt.SetFocused(false)
+	if enabled, state := a.keyboard.Snapshot(); !enabled || state.LeftY != 0 || state.Buttons != 0 {
+		t.Fatalf("keys remained pressed after blur: %+v", state)
+	}
+}
+
 func TestPowerOffRunsOnlyAfterSuccessfulCleanup(t *testing.T) {
 	done := make(chan error, 1)
 	called := make(chan struct{}, 1)

@@ -76,6 +76,12 @@ func (a *app) view(c *ui.Context) {
 			if a.frame != nil {
 				ui.Image(c, a.frame).FillWidth().Grow(1).Fit(videoFit(a.prefs.VideoFit))
 			}
+			if a.status != "" && a.status != "Streaming video." {
+				ui.Text(c, a.tr(a.status))
+			}
+			if a.wakeWarning != "" {
+				ui.Text(c, a.tr(a.wakeWarning))
+			}
 			if ui.Button(c.Key("show-stream-controls"), a.tr("Show controls")).Clicked() {
 				a.controlsHidden = false
 			}
