@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -274,13 +275,38 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 	if _, err = s.StartMicrophone(ctx); err == nil {
 		t.Fatal("accepted a second active microphone")
 	}
-	if err = mic.WriteSample(pionmedia.Sample{Data: []byte{0xf8, 0xff, 0xfe}, Duration: 20 * time.Millisecond}); err != nil {
-		t.Fatal(err)
+	sent := []byte{0xf8, 0xff, 0xfe}
+	if _, lookupErr := exec.LookPath("ffmpeg"); lookupErr == nil {
+		oneSample := errors.New("one sample sent")
+		encodeErr := appmedia.EncodeMicrophone(ctx, []string{"-f", "lavfi", "-i", "sine=frequency=440:duration=0.2"}, func(sample pionmedia.Sample) error {
+			sent = append([]byte(nil), sample.Data...)
+			if err := mic.WriteSample(sample); err != nil {
+				return err
+			}
+			return oneSample
+		})
+		if !errors.Is(encodeErr, oneSample) {
+			if os.Getenv("XSTREAMING_REQUIRE_MEDIA_TESTS") == "1" {
+				t.Fatalf("encode microphone audio: %v", encodeErr)
+			}
+			t.Logf("Opus encoder unavailable; using fixed packet: %v", encodeErr)
+			sent = []byte{0xf8, 0xff, 0xfe}
+			if err = mic.WriteSample(pionmedia.Sample{Data: sent, Duration: 20 * time.Millisecond}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	} else {
+		if os.Getenv("XSTREAMING_REQUIRE_MEDIA_TESTS") == "1" {
+			t.Fatalf("ffmpeg unavailable: %v", lookupErr)
+		}
+		if err = mic.WriteSample(pionmedia.Sample{Data: sent, Duration: 20 * time.Millisecond}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	var remoteMic *webrtc.TrackRemote
 	select {
 	case packet := <-microphonePackets:
-		if len(packet.payload) != 3 || packet.payload[0] != 0xf8 {
+		if !bytes.Equal(packet.payload, sent) {
 			t.Fatalf("unexpected microphone packet: %x", packet.payload)
 		}
 		remoteMic = packet.track
