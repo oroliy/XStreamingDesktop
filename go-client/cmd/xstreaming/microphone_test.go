@@ -84,13 +84,20 @@ func TestMicrophoneInputArgs(t *testing.T) {
 		{"linux", "", []string{"-f", "pulse", "-i", "default"}},
 		{"linux", "alsa_input.example", []string{"-f", "pulse", "-i", "alsa_input.example"}},
 		{"darwin", "ignored", []string{"-f", "avfoundation", "-i", ":default"}},
+		{"windows", "@device_cm_{abc}\\wave_{123}", []string{"-f", "dshow", "-i", "audio=@device_cm_{abc}\\wave_{123}"}},
 	} {
 		got, err := microphoneInputArgs(tc.platform, tc.source)
 		if err != nil || !reflect.DeepEqual(got, tc.want) {
 			t.Fatalf("platform=%s got=%v error=%v", tc.platform, got, err)
 		}
 	}
-	if _, err := microphoneInputArgs("windows", "default"); err == nil {
+	if _, err := microphoneInputArgs("windows", "default"); !errors.Is(err, errWindowsMicrophoneNotSelected) {
+		t.Fatalf("accepted missing Windows source: %v", err)
+	}
+	if _, err := microphoneInputArgs("windows", "audio:video"); err == nil {
+		t.Fatal("accepted an ambiguous DirectShow source")
+	}
+	if _, err := microphoneInputArgs("plan9", "default"); err == nil {
 		t.Fatal("accepted unsupported platform")
 	}
 }
@@ -100,12 +107,42 @@ func TestUnsupportedMicrophoneDoesNotNegotiate(t *testing.T) {
 		t.Fatal("unsupported platform negotiated audio")
 		return nil, nil
 	}}
-	err, stopErr := runMicrophone(context.Background(), context.Background(), "windows", "default", s, func(context.Context, []string, func(pionmedia.Sample) error) error {
+	err, stopErr := runMicrophone(context.Background(), context.Background(), "plan9", "default", s, func(context.Context, []string, func(pionmedia.Sample) error) error {
 		t.Fatal("unsupported platform started capture")
 		return nil
 	}, func() {})
 	if err == nil || stopErr != nil || s.stops != 0 {
 		t.Fatalf("error=%v stop=%v calls=%d", err, stopErr, s.stops)
+	}
+}
+
+func TestUnselectedWindowsMicrophoneDoesNotNegotiate(t *testing.T) {
+	s := &testMicrophoneSession{start: func(context.Context) (microphoneWriter, error) {
+		t.Fatal("unselected microphone negotiated audio")
+		return nil, nil
+	}}
+	err, stopErr := runMicrophone(context.Background(), context.Background(), "windows", "default", s, nil, func() {})
+	if !errors.Is(err, errWindowsMicrophoneNotSelected) || stopErr != nil || s.stops != 0 {
+		t.Fatalf("error=%v stop=%v calls=%d", err, stopErr, s.stops)
+	}
+}
+
+func TestWindowsMicrophoneUsesChosenDevice(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s := &testMicrophoneSession{start: func(context.Context) (microphoneWriter, error) { return testMicrophoneTrack(t), nil }}
+	err, stopErr := runMicrophone(ctx, ctx, "windows", "Microphone (USB)", s, func(ctx context.Context, args []string, send func(pionmedia.Sample) error) error {
+		if !reflect.DeepEqual(args, []string{"-f", "dshow", "-i", "audio=Microphone (USB)"}) {
+			t.Fatalf("unexpected DirectShow arguments: %v", args)
+		}
+		if err := send(pionmedia.Sample{Data: []byte{0xf8, 0xff, 0xfe}, Duration: 20 * time.Millisecond}); err != nil {
+			t.Fatal(err)
+		}
+		cancel()
+		return ctx.Err()
+	}, func() {})
+	if !errors.Is(err, context.Canceled) || stopErr != nil || s.stops != 1 {
+		t.Fatalf("error=%v stop=%v detach=%d", err, stopErr, s.stops)
 	}
 }
 

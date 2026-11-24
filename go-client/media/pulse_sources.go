@@ -9,15 +9,26 @@ import (
 	"strings"
 )
 
-type PulseSource struct {
+type AudioSource struct {
 	Name        string
 	Description string
 }
 
+// PulseSource is retained as an alias for callers listing PulseAudio inputs.
+type PulseSource = AudioSource
+
 // PulseSources lists PulseAudio sources using the existing FFmpeg dependency.
 // It does not open or record from a source.
-func PulseSources(ctx context.Context) ([]PulseSource, error) {
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-sources", "pulse")
+func PulseSources(ctx context.Context) ([]AudioSource, error) {
+	output, err := captureSourceOutput(ctx, "pulse")
+	if err != nil {
+		return nil, err
+	}
+	return parsePulseSources(output)
+}
+
+func captureSourceOutput(ctx context.Context, backend string) (string, error) {
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-sources", backend)
 	configureMediaProcess(cmd)
 	cmd.Env = append(os.Environ(), "LC_ALL=C")
 	var output boundedOutput
@@ -26,14 +37,14 @@ func PulseSources(ctx context.Context) ([]PulseSource, error) {
 	cmd.Stderr = &diagnostic
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return "", ctx.Err()
 		}
-		return nil, processError("list PulseAudio sources", err, &diagnostic)
+		return "", processError("list audio sources", err, &diagnostic)
 	}
 	if output.truncated {
-		return nil, errors.New("PulseAudio source list is too large")
+		return "", errors.New("audio source list is too large")
 	}
-	return parsePulseSources(output.buf.String())
+	return output.buf.String(), nil
 }
 
 type boundedOutput struct {

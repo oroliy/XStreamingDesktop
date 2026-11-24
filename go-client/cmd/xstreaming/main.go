@@ -57,7 +57,7 @@ type app struct {
 	micStopping       bool
 	micStatus         string
 	micSourceDraft    string
-	micSources        []media.PulseSource
+	micSources        []media.AudioSource
 	micSourceChoice   string
 	micSourcesLoading bool
 	micSourcesStatus  string
@@ -308,7 +308,7 @@ func (a *app) view(c *ui.Context) {
 				}
 			}
 			ui.Text(c, a.tr("Settings")).Bold()
-			if runtime.GOOS == "linux" {
+			if microphoneSourceSettingsSupported(runtime.GOOS) {
 				ui.Row(c).Gap(8).Children(func() {
 					ui.Text(c, a.tr("Microphone input"))
 					options, names, selected := microphoneSourceOptions(a.micSources, a.micSourceDraft)
@@ -325,8 +325,17 @@ func (a *app) view(c *ui.Context) {
 				if a.micSourcesStatus != "" {
 					ui.Text(c, a.tr(a.micSourcesStatus))
 				}
+				if runtime.GOOS == "windows" {
+					ui.Text(c, a.tr("Choose a microphone input before enabling capture."))
+				}
 				ui.Row(c).Gap(8).Children(func() {
-					if ui.TextInput(c.Key("microphone-source"), &a.micSourceDraft).Label(a.tr("PulseAudio input name")).Placeholder("default").MaxLength(256).Width(300).Changed() {
+					label := "PulseAudio input name"
+					placeholder := "default"
+					if runtime.GOOS == "windows" {
+						label = "DirectShow input name"
+						placeholder = a.tr("Select a device")
+					}
+					if ui.TextInput(c.Key("microphone-source"), &a.micSourceDraft).Label(a.tr(label)).Placeholder(placeholder).MaxLength(256).Width(300).Changed() {
 						_, _, a.micSourceChoice = microphoneSourceOptions(a.micSources, a.micSourceDraft)
 					}
 					if ui.Button(c.Key("save-microphone-source"), a.tr("Save microphone input")).Clicked() {

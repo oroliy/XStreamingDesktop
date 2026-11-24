@@ -31,7 +31,9 @@ func (s liveMicrophoneSession) StartMicrophone(ctx context.Context) (microphoneW
 
 type microphoneEncoder func(context.Context, []string, func(pionmedia.Sample) error) error
 
-func microphoneSourceOptions(sources []media.PulseSource, selected string) ([]string, map[string]string, string) {
+var errWindowsMicrophoneNotSelected = errors.New("Choose a Windows microphone in settings.")
+
+func microphoneSourceOptions(sources []media.AudioSource, selected string) ([]string, map[string]string, string) {
 	options := []string{"default"}
 	seen := map[string]bool{"default": true}
 	names := map[string]string{"default": "default"}
@@ -70,7 +72,13 @@ func (a *app) refreshMicrophoneSources() {
 	go func() {
 		ctx, cancel := context.WithTimeout(a.ctx, 5*time.Second)
 		defer cancel()
-		sources, err := media.PulseSources(ctx)
+		var sources []media.AudioSource
+		var err error
+		if runtime.GOOS == "windows" {
+			sources, err = media.DirectShowSources(ctx)
+		} else {
+			sources, err = media.PulseSources(ctx)
+		}
 		a.update(func() {
 			if a.ctx.Err() != nil {
 				return
@@ -80,7 +88,7 @@ func (a *app) refreshMicrophoneSources() {
 	}()
 }
 
-func (a *app) finishMicrophoneSources(sources []media.PulseSource, err error) {
+func (a *app) finishMicrophoneSources(sources []media.AudioSource, err error) {
 	a.micSourcesLoading = false
 	if err != nil {
 		a.micSourcesStatus = "Unable to list microphone inputs: " + err.Error()
@@ -129,7 +137,11 @@ func runMicrophone(streamCtx, micCtx context.Context, platform, source string, s
 }
 
 func microphoneSupported(platform string) bool {
-	return platform == "linux" || platform == "darwin"
+	return platform == "linux" || platform == "darwin" || platform == "windows"
+}
+
+func microphoneSourceSettingsSupported(platform string) bool {
+	return platform == "linux" || platform == "windows"
 }
 
 func microphoneInputArgs(platform, source string) ([]string, error) {
@@ -142,6 +154,14 @@ func microphoneInputArgs(platform, source string) ([]string, error) {
 	case "darwin":
 		// AVFoundation's audio-only default avoids opening a camera.
 		return []string{"-f", "avfoundation", "-i", ":default"}, nil
+	case "windows":
+		if source == "" || source == "default" {
+			return nil, errWindowsMicrophoneNotSelected
+		}
+		if strings.ContainsAny(source, ":\x00\r\n") {
+			return nil, errors.New("invalid DirectShow input name")
+		}
+		return []string{"-f", "dshow", "-i", "audio=" + source}, nil
 	default:
 		return nil, errors.New("microphone capture is unavailable on this platform")
 	}
@@ -219,6 +239,8 @@ func (a *app) captureMicrophone(streamCtx, micCtx context.Context, cancel contex
 		a.micStatus = ""
 		if stopErr != nil {
 			a.micStatus = fmt.Sprintf("Microphone failed: %v", stopErr)
+		} else if errors.Is(err, errWindowsMicrophoneNotSelected) && !wasCanceled {
+			a.micStatus = errWindowsMicrophoneNotSelected.Error()
 		} else if err != nil && !wasCanceled {
 			a.micStatus = fmt.Sprintf("Microphone failed: %v", err)
 		}

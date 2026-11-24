@@ -10,6 +10,7 @@ var chinese = map[string]string{
 	"Hide controls": "收起控制栏", "Show controls": "显示控制栏",
 	"Enable microphone": "启用麦克风", "Disable microphone": "关闭麦克风", "Starting microphone…": "正在启动麦克风…", "Microphone on.": "麦克风已开启。", "Stopping microphone…": "正在关闭麦克风…",
 	"PulseAudio input name": "PulseAudio 输入设备名", "Save microphone input": "保存麦克风设备", "Microphone input saved.": "麦克风设备已保存。", "Invalid microphone input name.": "麦克风设备名无效。",
+	"DirectShow input name": "DirectShow 输入设备名", "Select a device": "请选择设备", "Choose a microphone input before enabling capture.": "启用麦克风前请先选择输入设备。", "Choose a Windows microphone in settings.": "请先在设置中选择 Windows 麦克风。",
 	"Microphone input": "麦克风输入", "Available microphone inputs": "可用麦克风输入", "Refresh microphone inputs": "刷新麦克风输入", "Loading microphone inputs…": "正在获取麦克风输入…", "No microphone inputs found.": "未找到麦克风输入。", "Microphone inputs refreshed.": "麦克风输入已刷新。",
 	"Connection did not recover; please retry.": "连接未能恢复，请重试。",
 	"Controller input interrupted; retrying…":   "手柄输入中断，正在重试…",
