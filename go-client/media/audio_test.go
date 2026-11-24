@@ -3,8 +3,10 @@ package media
 import (
 	"context"
 	"errors"
+	"github.com/pion/interceptor"
 	"github.com/pion/rtp"
 	"io"
+	"os"
 	"os/exec"
 	"reflect"
 	"testing"
@@ -84,6 +86,72 @@ func TestReceiveOpusPropagatesWriterError(t *testing.T) {
 	failure := errors.New("audio sink failed")
 	reader := &packetReader{packets: []*rtp.Packet{{Header: rtp.Header{SequenceNumber: 1}}}, err: io.EOF}
 	if err := receiveOpus(reader, failingOpus{err: failure}); !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+}
+
+type timedPacketReader struct {
+	packets  chan *rtp.Packet
+	deadline time.Time
+}
+
+func (r *timedPacketReader) SetReadDeadline(deadline time.Time) error {
+	r.deadline = deadline
+	return nil
+}
+func (r *timedPacketReader) ReadRTP() (*rtp.Packet, interceptor.Attributes, error) {
+	if r.deadline.IsZero() {
+		packet, ok := <-r.packets
+		if !ok {
+			return nil, nil, io.EOF
+		}
+		return packet, nil, nil
+	}
+	timer := time.NewTimer(time.Until(r.deadline))
+	defer timer.Stop()
+	select {
+	case packet, ok := <-r.packets:
+		if !ok {
+			return nil, nil, io.EOF
+		}
+		return packet, nil, nil
+	case <-timer.C:
+		return nil, nil, os.ErrDeadlineExceeded
+	}
+}
+
+type notifiedOpus chan uint16
+
+func (w notifiedOpus) WriteRTP(packet *rtp.Packet) error { w <- packet.SequenceNumber; return nil }
+
+func TestReceiveOpusFlushesGapOnDeadline(t *testing.T) {
+	reader := &timedPacketReader{packets: make(chan *rtp.Packet, 2)}
+	reader.packets <- &rtp.Packet{Header: rtp.Header{SequenceNumber: 10}}
+	reader.packets <- &rtp.Packet{Header: rtp.Header{SequenceNumber: 12}}
+	out := make(notifiedOpus, 2)
+	done := make(chan error, 1)
+	go func() { done <- receiveOpus(reader, out) }()
+	for _, expected := range []uint16{10, 12} {
+		select {
+		case got := <-out:
+			if got != expected {
+				t.Fatalf("got %d, want %d", got, expected)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("buffered audio did not resume")
+		}
+	}
+	reader.packets <- &rtp.Packet{Header: rtp.Header{SequenceNumber: 13}}
+	select {
+	case got := <-out:
+		if got != 13 {
+			t.Fatalf("got %d after timeout, want 13", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("audio did not resume after timeout")
+	}
+	close(reader.packets)
+	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
 }

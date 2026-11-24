@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os/exec"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
@@ -68,7 +70,7 @@ func (p *AudioPlayer) Close() error {
 }
 
 // ReceiveOpus reorders a small number of late packets before writing Opus audio.
-// When a packet is lost, at most three subsequent packets are held before continuing.
+// When a packet is lost, it holds at most three subsequent packets or 100 ms.
 func ReceiveOpus(track *webrtc.TrackRemote, p *AudioPlayer) error {
 	return receiveOpus(track, p)
 }
@@ -83,6 +85,11 @@ func receiveOpus(track rtpReader, out opusWriter) error {
 	pending := make(map[uint16]*rtp.Packet, maxPending)
 	var next uint16
 	initialized := false
+	var gapDeadline time.Time
+	deadlineReader, hasDeadline := track.(interface{ SetReadDeadline(time.Time) error })
+	if hasDeadline {
+		defer func() { _ = deadlineReader.SetReadDeadline(time.Time{}) }()
+	}
 	drain := func(flush bool) error {
 		for len(pending) > 0 {
 			if packet, ok := pending[next]; ok {
@@ -109,10 +116,30 @@ func receiveOpus(track rtpReader, out opusWriter) error {
 		return nil
 	}
 	for {
+		if hasDeadline {
+			if len(pending) > 0 && gapDeadline.IsZero() {
+				gapDeadline = time.Now().Add(100 * time.Millisecond)
+				if err := deadlineReader.SetReadDeadline(gapDeadline); err != nil {
+					return err
+				}
+			} else if len(pending) == 0 && !gapDeadline.IsZero() {
+				gapDeadline = time.Time{}
+				if err := deadlineReader.SetReadDeadline(time.Time{}); err != nil {
+					return err
+				}
+			}
+		}
 		packet, _, err := track.ReadRTP()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return drain(true)
+			}
+			var timeout net.Error
+			if !gapDeadline.IsZero() && errors.As(err, &timeout) && timeout.Timeout() {
+				if err := drain(true); err != nil {
+					return err
+				}
+				continue
 			}
 			return err
 		}
