@@ -9,6 +9,7 @@ var chinese = map[string]string{
 	"Video display": "画面显示", "Fit": "适应", "Crop": "裁剪填满", "Stretch": "拉伸",
 	"Hide controls": "收起控制栏", "Show controls": "显示控制栏",
 	"Enable microphone": "启用麦克风", "Disable microphone": "关闭麦克风", "Starting microphone…": "正在启动麦克风…", "Microphone on.": "麦克风已开启。", "Stopping microphone…": "正在关闭麦克风…",
+	"PulseAudio input name": "PulseAudio 输入设备名", "Save microphone input": "保存麦克风设备", "Microphone input saved.": "麦克风设备已保存。", "Invalid microphone input name.": "麦克风设备名无效。",
 	"Connection did not recover; please retry.": "连接未能恢复，请重试。",
 	"Controller input interrupted; retrying…":   "手柄输入中断，正在重试…",
 	"Open Microsoft sign-in page":               "打开微软登录页面", "Enable keyboard controller": "启用键盘手柄", "Disable keyboard controller": "停用键盘手柄",

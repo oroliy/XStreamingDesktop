@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/oroliy/XStreamingDesktop/go-client/media"
 	"github.com/oroliy/XStreamingDesktop/go-client/session"
+	"github.com/oroliy/XStreamingDesktop/go-client/settings"
 	pionmedia "github.com/pion/webrtc/v4/pkg/media"
 )
 
@@ -29,7 +31,7 @@ type microphoneEncoder func(context.Context, []string, func(pionmedia.Sample) er
 
 // runMicrophone negotiates first; cancellation during negotiation prevents capture
 // without interrupting signaling for the enclosing stream.
-func runMicrophone(streamCtx, micCtx context.Context, s microphoneSession, encode microphoneEncoder, active func()) (error, error) {
+func runMicrophone(streamCtx, micCtx context.Context, source string, s microphoneSession, encode microphoneEncoder, active func()) (error, error) {
 	track, err := s.StartMicrophone(streamCtx)
 	if err != nil {
 		return err, nil
@@ -38,7 +40,7 @@ func runMicrophone(streamCtx, micCtx context.Context, s microphoneSession, encod
 		return err, s.StopMicrophone()
 	}
 	announced := false
-	err = encode(micCtx, []string{"-f", "pulse", "-i", "default"}, func(sample pionmedia.Sample) error {
+	err = encode(micCtx, []string{"-f", "pulse", "-i", source}, func(sample pionmedia.Sample) error {
 		if err := micCtx.Err(); err != nil {
 			return err
 		}
@@ -57,22 +59,47 @@ func runMicrophone(streamCtx, micCtx context.Context, s microphoneSession, encod
 	return err, s.StopMicrophone()
 }
 
+func (a *app) saveMicrophoneSource() {
+	source := strings.TrimSpace(a.micSourceDraft)
+	if source == "" {
+		source = "default"
+	}
+	next := a.prefs
+	next.MicrophoneSource = source
+	if err := next.Validate(); err != nil {
+		a.status = "Invalid microphone input name."
+		return
+	}
+	if a.settingsPath != "" {
+		if err := settings.Save(a.settingsPath, next); err != nil {
+			a.status = "Unable to save settings: " + err.Error()
+			return
+		}
+	}
+	a.prefs = next
+	a.micSourceDraft = source
+	a.status = "Microphone input saved."
+}
+
 // startMicrophone and clearMicrophone run on the UI thread.
 func (a *app) startMicrophone() {
 	if a.micSession == nil || a.streamCtx == nil || a.micCancel != nil {
 		return
 	}
-	streamCtx, s := a.streamCtx, a.micSession
+	streamCtx, s, source := a.streamCtx, a.micSession, a.prefs.MicrophoneSource
+	if source == "" {
+		source = "default"
+	}
 	micCtx, cancel := context.WithCancel(streamCtx)
 	a.micCtx, a.micCancel = micCtx, cancel
 	a.micStatus = "Starting microphone…"
 	if a.streamWG != nil {
 		a.streamWG.Add(1)
 	}
-	go a.captureMicrophone(streamCtx, micCtx, cancel, s)
+	go a.captureMicrophone(streamCtx, micCtx, cancel, s, source)
 }
 
-func (a *app) captureMicrophone(streamCtx, micCtx context.Context, cancel context.CancelFunc, s *session.Session) {
+func (a *app) captureMicrophone(streamCtx, micCtx context.Context, cancel context.CancelFunc, s *session.Session, source string) {
 	if a.streamWG != nil {
 		defer a.streamWG.Done()
 	}
@@ -86,7 +113,7 @@ func (a *app) captureMicrophone(streamCtx, micCtx context.Context, cancel contex
 		}
 	}()
 	defer close(finished)
-	err, stopErr := runMicrophone(streamCtx, micCtx, liveMicrophoneSession{s}, media.EncodeMicrophone, func() {
+	err, stopErr := runMicrophone(streamCtx, micCtx, source, liveMicrophoneSession{s}, media.EncodeMicrophone, func() {
 		a.update(func() {
 			if a.micCtx == micCtx && micCtx.Err() == nil {
 				a.micStatus = "Microphone on."

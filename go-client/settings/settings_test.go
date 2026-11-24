@@ -4,6 +4,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -18,6 +19,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 	s.StickDeadzone = 25
 	s.PollingRate = "250 Hz"
 	s.VideoFit = "Crop"
+	s.MicrophoneSource = "alsa_input.usb-example"
 	if err = Save(p, s); err != nil {
 		t.Fatal(err)
 	}
@@ -37,12 +39,22 @@ func TestLegacySettingsGainDefaultVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := Load(p)
-	if err != nil || got.Volume != 100 || got.StickDeadzone != 10 || got.PollingRate != "60 Hz" || got.ResolutionCode() != 720 || got.UILanguage != "English" || got.VideoFit != "Fit" {
+	if err != nil || got.Volume != 100 || got.StickDeadzone != 10 || got.PollingRate != "60 Hz" || got.ResolutionCode() != 720 || got.UILanguage != "English" || got.VideoFit != "Fit" || got.MicrophoneSource != "default" {
 		t.Fatal(got, err)
 	}
 	got.Volume = 101
 	if err = got.Validate(); err == nil {
 		t.Fatal("accepted invalid volume")
+	}
+}
+
+func TestMicrophoneSourceValidation(t *testing.T) {
+	s := Defaults()
+	for _, source := range []string{"", " leading", "bad\x00source", "bad\nsource", strings.Repeat("x", 257)} {
+		s.MicrophoneSource = source
+		if s.Validate() == nil {
+			t.Errorf("accepted microphone source %q", source)
+		}
 	}
 }
 

@@ -19,6 +19,7 @@ type Settings struct {
 	Market           string  `json:"market"`
 	CloudRegion      string  `json:"cloud_region"`
 	VideoFit         string  `json:"video_fit"`
+	MicrophoneSource string  `json:"microphone_source"`
 	Volume           float64 `json:"volume"`
 	StickDeadzone    float64 `json:"stick_deadzone"`
 	PollingRate      string  `json:"polling_rate"`
@@ -37,9 +38,12 @@ func CatalogMarkets() []string {
 }
 
 func Defaults() Settings {
-	return Settings{Resolution: "1080p", UILanguage: "English", Language: "en-US", Market: "US", CloudRegion: "Automatic", VideoFit: "Fit", Volume: 100, StickDeadzone: 10, PollingRate: "60 Hz"}
+	return Settings{Resolution: "1080p", UILanguage: "English", Language: "en-US", Market: "US", CloudRegion: "Automatic", VideoFit: "Fit", MicrophoneSource: "default", Volume: 100, StickDeadzone: 10, PollingRate: "60 Hz"}
 }
 func (s Settings) Validate() error {
+	if s.MicrophoneSource == "" || len(s.MicrophoneSource) > 256 || strings.TrimSpace(s.MicrophoneSource) != s.MicrophoneSource || strings.ContainsAny(s.MicrophoneSource, "\x00\r\n") {
+		return errors.New("invalid microphone source")
+	}
 	if s.VideoFit != "Fit" && s.VideoFit != "Crop" && s.VideoFit != "Stretch" {
 		return errors.New("invalid video fit")
 	}

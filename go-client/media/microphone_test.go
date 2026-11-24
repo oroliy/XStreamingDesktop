@@ -73,14 +73,16 @@ func TestEncodeMicrophoneFromVirtualPulseAudio(t *testing.T) {
 		t.Skip("no isolated PulseAudio test server configured")
 	}
 	t.Setenv("PULSE_SERVER", server)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	gotSample := errors.New("received virtual microphone sample")
-	err := EncodeMicrophone(ctx, []string{"-f", "pulse", "-i", "default"}, func(pionmedia.Sample) error {
-		return gotSample
-	})
-	if !errors.Is(err, gotSample) {
-		t.Fatalf("virtual PulseAudio capture failed: %v", err)
+	for _, source := range []string{"default", "virtual_mic"} {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		gotSample := errors.New("received virtual microphone sample")
+		err := EncodeMicrophone(ctx, []string{"-f", "pulse", "-i", source}, func(pionmedia.Sample) error {
+			return gotSample
+		})
+		cancel()
+		if !errors.Is(err, gotSample) {
+			t.Fatalf("virtual PulseAudio capture %q failed: %v", source, err)
+		}
 	}
 }
 

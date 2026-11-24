@@ -56,6 +56,7 @@ type app struct {
 	micCancel         context.CancelFunc
 	micStopping       bool
 	micStatus         string
+	micSourceDraft    string
 	consoleText       string
 	textStatus        string
 	textSending       bool
@@ -303,6 +304,14 @@ func (a *app) view(c *ui.Context) {
 				}
 			}
 			ui.Text(c, a.tr("Settings")).Bold()
+			if runtime.GOOS == "linux" {
+				ui.Row(c).Gap(8).Children(func() {
+					ui.TextInput(c.Key("microphone-source"), &a.micSourceDraft).Label(a.tr("PulseAudio input name")).Placeholder("default").MaxLength(256).Width(300)
+					if ui.Button(c.Key("save-microphone-source"), a.tr("Save microphone input")).Clicked() {
+						a.saveMicrophoneSource()
+					}
+				})
+			}
 			ui.Row(c).Gap(8).Children(func() {
 				ui.Text(c, a.tr("Interface language"))
 				if ui.Select(c.Key("ui-language"), &a.prefs.UILanguage, []string{"English", "简体中文"}).Changed() && a.settingsPath != "" {
@@ -1368,7 +1377,7 @@ func main() {
 				prefs = saved
 			}
 		}
-		a := &app{ctx: ctx, cancel: cancel, accountCtx: accountCtx, accountCancel: accountCancel, busy: true, prefs: prefs, settingsPath: path, streamWG: &streamWG}
+		a := &app{ctx: ctx, cancel: cancel, accountCtx: accountCtx, accountCancel: accountCancel, busy: true, prefs: prefs, settingsPath: path, streamWG: &streamWG, micSourceDraft: prefs.MicrophoneSource}
 		a.win = mygo.NewWindow(mygo.WindowOptions{Title: "XStreaming (Go preview)", Content: ui.View(a.view)})
 		a.win.OnEnterFullScreen(func() { a.fullscreen = true; a.win.Invalidate() })
 		a.win.OnLeaveFullScreen(func() { a.fullscreen = false; a.win.Invalidate() })

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"testing"
@@ -78,8 +79,9 @@ func TestMicrophoneCaptureStopsAndDetaches(t *testing.T) {
 	defer cancel()
 	s := &testMicrophoneSession{start: func(context.Context) (microphoneWriter, error) { return testMicrophoneTrack(t), nil }}
 	active := 0
-	err, stopErr := runMicrophone(ctx, ctx, s, func(ctx context.Context, args []string, send func(pionmedia.Sample) error) error {
-		if !reflect.DeepEqual(args, []string{"-f", "pulse", "-i", "default"}) {
+	source := "alsa_input.usb-example"
+	err, stopErr := runMicrophone(ctx, ctx, source, s, func(ctx context.Context, args []string, send func(pionmedia.Sample) error) error {
+		if !reflect.DeepEqual(args, []string{"-f", "pulse", "-i", source}) {
 			t.Fatal(args)
 		}
 		for i := 0; i < 2; i++ {
@@ -103,11 +105,51 @@ func TestCancelDuringMicrophoneNegotiationSkipsCapture(t *testing.T) {
 		cancel()
 		return track, nil
 	}}
-	err, stopErr := runMicrophone(context.Background(), micCtx, s, func(context.Context, []string, func(pionmedia.Sample) error) error {
+	err, stopErr := runMicrophone(context.Background(), micCtx, "default", s, func(context.Context, []string, func(pionmedia.Sample) error) error {
 		t.Fatal("capture started after cancellation")
 		return nil
 	}, func() { t.Fatal("announced active after cancellation") })
 	if !errors.Is(err, context.Canceled) || stopErr != nil || s.stops != 1 {
 		t.Fatalf("err=%v stop=%v detach=%d", err, stopErr, s.stops)
+	}
+}
+
+func TestSaveMicrophoneSource(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	a := &app{prefs: settings.Defaults(), settingsPath: path, micSourceDraft: "  alsa_input.usb-example  "}
+	a.saveMicrophoneSource()
+	saved, err := settings.Load(path)
+	if err != nil || saved.MicrophoneSource != "alsa_input.usb-example" || a.prefs.MicrophoneSource != saved.MicrophoneSource {
+		t.Fatalf("settings=%+v error=%v", saved, err)
+	}
+	a.micSourceDraft = "  "
+	a.saveMicrophoneSource()
+	if a.prefs.MicrophoneSource != "default" {
+		t.Fatal("empty input did not restore the default source")
+	}
+	a.micSourceDraft = "bad\x00source"
+	a.saveMicrophoneSource()
+	if a.prefs.MicrophoneSource != "default" || a.status != "Invalid microphone input name." {
+		t.Fatal("invalid input replaced the saved source")
+	}
+}
+
+func TestMicrophoneSourceSettingsUI(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("microphone input setting is Linux-only")
+	}
+	path := filepath.Join(t.TempDir(), "settings.json")
+	a := &app{prefs: settings.Defaults(), settingsPath: path}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if err := tt.Click("PulseAudio input name"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("alsa_input.example")
+	if err := tt.Click("Save microphone input"); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := settings.Load(path)
+	if err != nil || saved.MicrophoneSource != "alsa_input.example" {
+		t.Fatalf("source=%q error=%v", saved.MicrophoneSource, err)
 	}
 }
