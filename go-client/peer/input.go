@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"encoding/json"
 	"errors"
 	"sync"
 	"time"
@@ -13,13 +14,14 @@ import (
 type InputSender struct {
 	mu          sync.Mutex
 	channel     *webrtc.DataChannel
+	control     *webrtc.DataChannel
 	started     time.Time
 	seq         uint32
 	initialized bool
 }
 
 func (p *Peer) Input() *InputSender {
-	return &InputSender{channel: p.Channel("input"), started: time.Now()}
+	return &InputSender{channel: p.Channel("input"), control: p.Channel("control"), started: time.Now()}
 }
 func (s *InputSender) Init(maxTouchpoints uint8) error {
 	s.mu.Lock()
@@ -56,3 +58,20 @@ func (s *InputSender) SendGamepads(frames []protocol.Gamepad) error {
 
 // Ready closes after the message and control channels complete their initial handshake.
 func (p *Peer) Ready() <-chan struct{} { return p.ready }
+
+// GamepadChanged announces a connection or disconnection after the handshake.
+func (s *InputSender) GamepadChanged(index uint8, added bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.initialized {
+		return errors.New("input channel is not initialized")
+	}
+	if s.control.ReadyState() != webrtc.DataChannelStateOpen {
+		return errors.New("control channel is not open")
+	}
+	data, err := json.Marshal(protocol.GamepadChanged(int(index), added))
+	if err != nil {
+		return err
+	}
+	return s.control.SendText(string(data))
+}

@@ -76,7 +76,7 @@ func TestControlHandshake(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	for _, expected := range []string{"authorizationRequest", "gamepadChanged", "gamepadChanged"} {
+	for _, expected := range []string{"authorizationRequest", "gamepadChanged"} {
 		select {
 		case msg := <-got:
 			if msg != expected {

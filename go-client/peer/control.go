@@ -48,7 +48,6 @@ func (p *Peer) StartControl(ctx context.Context, onError func(error)) {
 			report(err)
 			return
 		}
-		close(p.ready)
 		go func() {
 			timer := time.NewTimer(500 * time.Millisecond)
 			defer timer.Stop()
@@ -57,10 +56,7 @@ func (p *Peer) StartControl(ctx context.Context, onError func(error)) {
 				return
 			case <-timer.C:
 			}
-			if err := send(control, protocol.GamepadChanged(0, true)); err != nil {
-				report(err)
-				return
-			}
+			close(p.ready)
 			ticker := time.NewTicker(5 * time.Second)
 			defer ticker.Stop()
 			for {
