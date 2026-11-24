@@ -434,6 +434,19 @@ func (a *app) wakeConsole(ctx context.Context, credentials *auth.Session, id str
 		}
 	})
 }
+
+// showFrame runs on the UI thread, reusing the bitmap and updating startup status.
+func (a *app) showFrame(img image.Image) {
+	if a.frame == nil {
+		a.frame = ui.NewBitmap(img)
+	} else {
+		a.frame.Update(img)
+	}
+	switch a.status {
+	case "Connected; waiting for video…", "Negotiation complete; waiting for connection…", "Negotiating connection…":
+		a.status = "Streaming video."
+	}
+}
 func (a *app) startStream(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -501,11 +514,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 				if ctx.Err() != nil {
 					return
 				}
-				if a.frame == nil {
-					a.frame = ui.NewBitmap(img)
-				} else {
-					a.frame.Update(img)
-				}
+				a.showFrame(img)
 			})
 		})
 		if err != nil {
@@ -551,7 +560,11 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		case webrtc.PeerConnectionStateConnected:
 			a.update(func() {
 				if ctx.Err() == nil {
-					a.status = "Connected; waiting for video…"
+					if a.frame == nil {
+						a.status = "Connected; waiting for video…"
+					} else {
+						a.status = "Streaming video."
+					}
 				}
 			})
 		case webrtc.PeerConnectionStateDisconnected:

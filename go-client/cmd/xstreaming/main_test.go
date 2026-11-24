@@ -8,6 +8,7 @@ import (
 	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
 	"github.com/oroliy/XStreamingDesktop/go-client/settings"
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
+	"image"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -144,5 +145,20 @@ func TestPlayableTitlesExcludeMissingID(t *testing.T) {
 	out := playableTitles([]streaming.Title{{TitleID: "playable", Name: "Game"}, {Name: "Missing ID"}})
 	if len(out) != 1 || out[0].TitleID != "playable" {
 		t.Fatal(out)
+	}
+}
+
+func TestFirstVideoFrameUpdatesStatus(t *testing.T) {
+	a := &app{status: "Connected; waiting for video…"}
+	frame := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	a.showFrame(frame)
+	if a.frame == nil || a.status != "Streaming video." {
+		t.Fatal(a.status)
+	}
+	previous := a.frame
+	a.status = "Stream error: audio failed"
+	a.showFrame(frame)
+	if a.frame != previous || a.status != "Stream error: audio failed" {
+		t.Fatal("frame update obscured error or replaced bitmap")
 	}
 }
