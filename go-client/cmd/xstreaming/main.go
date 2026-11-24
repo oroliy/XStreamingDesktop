@@ -178,6 +178,9 @@ func (a *app) view(c *ui.Context) {
 		if a.code != "" {
 			ui.Text(c, a.tr("Visit: ")+a.uri)
 			ui.Text(c, a.tr("Code: ")+a.code).FontSize(24).Bold()
+			if ui.Button(c.Key("copy-code"), a.tr("Copy sign-in code")).Clicked() {
+				c.WriteClipboard(a.code)
+			}
 			if verificationURLAllowed(a.uri) {
 				if ui.Button(c.Key("open-verification"), a.tr("Open Microsoft sign-in page")).Clicked() {
 					address := a.uri

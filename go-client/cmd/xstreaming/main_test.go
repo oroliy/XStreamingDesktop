@@ -38,6 +38,12 @@ func TestInitialAndLoadingView(t *testing.T) {
 	if !tt.HasText("Code: ABCD") {
 		t.Fatal(tt.Texts())
 	}
+	if err := tt.Click("Copy sign-in code"); err != nil {
+		t.Fatal(err)
+	}
+	if got := tt.Clipboard(); got != "ABCD" {
+		t.Fatalf("copied code %q", got)
+	}
 }
 func TestLibraryAndStop(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

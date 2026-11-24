@@ -15,7 +15,7 @@ var chinese = map[string]string{
 	"Microphone input": "麦克风输入", "Available microphone inputs": "可用麦克风输入", "Refresh microphone inputs": "刷新麦克风输入", "Loading microphone inputs…": "正在获取麦克风输入…", "No microphone inputs found.": "未找到麦克风输入。", "Microphone inputs refreshed.": "麦克风输入已刷新。",
 	"Connection did not recover; please retry.": "连接未能恢复，请重试。",
 	"Controller input interrupted; retrying…":   "手柄输入中断，正在重试…",
-	"Open Microsoft sign-in page":               "打开微软登录页面", "Enable keyboard controller": "启用键盘手柄", "Disable keyboard controller": "停用键盘手柄",
+	"Open Microsoft sign-in page":               "打开微软登录页面", "Copy sign-in code": "复制登录代码", "Enable keyboard controller": "启用键盘手柄", "Disable keyboard controller": "停用键盘手柄",
 	"WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable": "WASD：左摇杆 · TFGH：右摇杆 · IJKL：面键 · 方向键：方向键 · Esc：退出",
 	"Sign-in expired; please sign in again.":                                              "登录信息已失效，请重新登录。", "Sign in with Microsoft": "使用微软账号登录", "Sign out": "退出登录", "Consoles": "主机", "Refresh consoles": "刷新主机", "Wake console": "唤醒主机", "Power off console": "关闭主机", "Start stream": "开始串流",
 	"Settings": "设置", "Cloud region": "云串流区域", "Resolution": "分辨率", "Language": "游戏语言", "Market": "目录市场", "Interface language": "界面语言", "Prefer IPv6 candidates": "优先使用 IPv6 候选地址", "Wake standby console before streaming": "串流前唤醒待机主机", "Starting volume": "启动音量", "Stick dead zone": "摇杆死区", "Controller polling rate": "手柄轮询频率",
