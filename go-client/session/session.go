@@ -4,6 +4,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -13,6 +14,12 @@ import (
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
 	"github.com/pion/webrtc/v4"
 )
+
+// CleanupError reports a failure to stop a remote session after startup failed.
+type CleanupError struct{ Err error }
+
+func (e *CleanupError) Error() string { return "stop remote session: " + e.Err.Error() }
+func (e *CleanupError) Unwrap() error { return e.Err }
 
 type Session struct {
 	client   *streaming.Client
@@ -50,7 +57,9 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 	s := &Session{client: client, id: id, cancel: cancel, done: live.Done()}
 	defer func() {
 		if err != nil {
-			_ = s.Close()
+			if cleanupErr := s.Close(); cleanupErr != nil {
+				err = errors.Join(err, &CleanupError{Err: cleanupErr})
+			}
 		}
 	}()
 	if err = client.WaitProvisionedWithProgress(live, id, opts.TransferToken, opts.OnProgress); err != nil {

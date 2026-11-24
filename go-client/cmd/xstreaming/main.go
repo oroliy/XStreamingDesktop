@@ -698,13 +698,17 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	}})
 	if err != nil {
 		stopped := ctx.Err() != nil
+		var cleanupErr *session.CleanupError
+		errors.As(err, &cleanupErr)
 		a.update(func() {
 			a.busy = false
 			a.streamCancel = nil
 			if a.fullscreen && a.win != nil {
 				a.win.SetFullScreen(false)
 			}
-			if stopped {
+			if stopped && cleanupErr != nil {
+				a.status = streamEndStatus(false, cleanupErr.Err)
+			} else if stopped {
 				a.status = "Stream stopped."
 			} else {
 				a.status = "Stream failed: " + err.Error()
@@ -730,7 +734,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	case <-s.Done():
 	}
 	failed := ctx.Err() == nil
-	_ = s.Close()
+	cleanupErr := s.Close()
 	a.update(func() {
 		a.busy = false
 		a.streamCancel = nil
@@ -740,13 +744,23 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		a.frame = nil
 		a.keyboardEnabled = false
 		a.keyboard.Set(false, protocol.Gamepad{})
-		if failed {
-			a.status = "Connection failed; please retry."
-		} else {
-			a.status = "Stream stopped."
-		}
+		a.status = streamEndStatus(failed, cleanupErr)
 	})
 }
+
+func streamEndStatus(failed bool, cleanupErr error) string {
+	if cleanupErr != nil {
+		if failed {
+			return "Connection failed; remote session cleanup failed: " + cleanupErr.Error()
+		}
+		return "Stream stopped; remote session cleanup failed: " + cleanupErr.Error()
+	}
+	if failed {
+		return "Connection failed; please retry."
+	}
+	return "Stream stopped."
+}
+
 func main() {
 	mygo.App.WhenReady(func() {
 		ctx, cancel := context.WithCancel(context.Background())

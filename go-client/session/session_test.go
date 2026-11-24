@@ -9,6 +9,7 @@ import (
 	"github.com/pion/webrtc/v4"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -208,5 +209,32 @@ func TestSignalingFailureCleansUp(t *testing.T) {
 	}
 	if stopped.Load() != 1 {
 		t.Fatalf("stopped %d times", stopped.Load())
+	}
+}
+
+func TestStartupErrorPreservesCleanupFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v5/sessions/home/play":
+			fmt.Fprint(w, `{"sessionPath":"/v5/sessions/failed"}`)
+		case r.URL.Path == "/v5/sessions/home/failed/state":
+			fmt.Fprint(w, `{"state":"Failed","errorDetails":{"code":"no-capacity"}}`)
+		case r.URL.Path == "/v5/sessions/home/failed" && r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusBadGateway)
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client, err := streaming.NewClient(server.URL, "token", "home", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Start(context.Background(), client, Options{Play: streaming.PlayOptions{Target: "console"}})
+	var cleanup *CleanupError
+	var httpErr *streaming.HTTPError
+	if err == nil || !strings.Contains(err.Error(), "no-capacity") || !errors.As(err, &cleanup) || !errors.As(cleanup, &httpErr) || httpErr.Status != http.StatusBadGateway {
+		t.Fatalf("expected provisioning and cleanup errors, got %v", err)
 	}
 }

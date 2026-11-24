@@ -225,3 +225,17 @@ func TestQueueWaitTranslation(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestStreamEndStatusReportsCleanupFailure(t *testing.T) {
+	err := errors.New("service unavailable")
+	if got := streamEndStatus(false, err); got != "Stream stopped; remote session cleanup failed: service unavailable" {
+		t.Fatal(got)
+	}
+	if got := streamEndStatus(true, err); got != "Connection failed; remote session cleanup failed: service unavailable" {
+		t.Fatal(got)
+	}
+	a := &app{prefs: settings.Settings{UILanguage: "简体中文"}}
+	if got := a.tr(streamEndStatus(false, err)); got != "串流已停止，但远程会话清理失败：service unavailable" {
+		t.Fatal(got)
+	}
+}
