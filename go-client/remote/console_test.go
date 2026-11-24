@@ -50,3 +50,26 @@ func TestWakeFailure(t *testing.T) {
 		t.Fatal("accepted rejected wake")
 	}
 }
+
+func TestPowerOff(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Type      string `json:"type"`
+			Command   string `json:"command"`
+			ConsoleID string `json:"linkedXboxId"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Type != "Power" || body.Command != "TurnOff" || body.ConsoleID != "console" {
+			t.Errorf("invalid power-off request: %+v, %v", body, err)
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer s.Close()
+	var token auth.XboxToken
+	token.Token = "token"
+	token.DisplayClaims.XUI = append(token.DisplayClaims.XUI, struct {
+		UserHash string `json:"uhs"`
+	}{"hash"})
+	if err := (&Client{http: s.Client(), endpoint: s.URL}).PowerOff(context.Background(), "console", token); err != nil {
+		t.Fatal(err)
+	}
+}

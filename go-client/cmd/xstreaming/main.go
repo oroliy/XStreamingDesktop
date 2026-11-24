@@ -191,6 +191,11 @@ func (a *app) view(c *ui.Context) {
 						a.status = "Sending wake request…"
 						go a.wakeConsole(a.accountCtx, a.credentials, console.ServerID)
 					}
+					if ui.Button(c.Key("power-off-"+console.ServerID), a.tr("Power off console")).Clicked() {
+						a.busy = true
+						a.status = "Sending power-off request…"
+						go a.powerOffConsole(a.accountCtx, a.credentials, console.ServerID)
+					}
 					if ui.Button(c.Key(console.ServerID), a.tr("Start stream")).Clicked() {
 						ctx, cancel := context.WithCancel(a.ctx)
 						a.streamCancel = cancel
@@ -649,6 +654,24 @@ func (a *app) wakeConsole(ctx context.Context, credentials *auth.Session, id str
 			a.status = "Wake request failed: " + err.Error()
 		} else {
 			a.status = "Wake request sent. The console may take a moment to start."
+		}
+	})
+}
+
+func (a *app) powerOffConsole(ctx context.Context, credentials *auth.Session, id string) {
+	token, err := credentials.WebToken(ctx)
+	if err == nil {
+		err = remote.NewClient().PowerOff(ctx, id, token)
+	}
+	a.update(func() {
+		if ctx.Err() != nil {
+			return
+		}
+		a.busy = false
+		if err != nil {
+			a.status = "Power-off request failed: " + err.Error()
+		} else {
+			a.status = "Power-off request sent. Refresh the console list to check its state."
 		}
 	})
 }

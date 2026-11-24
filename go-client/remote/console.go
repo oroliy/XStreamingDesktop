@@ -28,13 +28,22 @@ func NewClient() *Client {
 // Wake sends a remote wake command. A successful HTTP response only confirms
 // the request was accepted; it does not mean the console has powered on.
 func (c *Client) Wake(ctx context.Context, consoleID string, token auth.XboxToken) error {
+	return c.powerCommand(ctx, consoleID, token, "WakeUp")
+}
+
+// PowerOff requests a console shutdown; acceptance does not confirm its power state.
+func (c *Client) PowerOff(ctx context.Context, consoleID string, token auth.XboxToken) error {
+	return c.powerCommand(ctx, consoleID, token, "TurnOff")
+}
+
+func (c *Client) powerCommand(ctx context.Context, consoleID string, token auth.XboxToken, command string) error {
 	if consoleID == "" || strings.ContainsAny(consoleID, "\r\n") {
 		return errors.New("invalid console ID")
 	}
 	if token.Token == "" || len(token.DisplayClaims.XUI) == 0 || token.DisplayClaims.XUI[0].UserHash == "" {
 		return errors.New("missing Xbox web credentials")
 	}
-	payload := map[string]any{"destination": "Xbox", "type": "Power", "command": "WakeUp", "sessionId": uuid.NewString(), "sourceId": "com.microsoft.smartglass", "parameters": []any{}, "linkedXboxId": consoleID}
+	payload := map[string]any{"destination": "Xbox", "type": "Power", "command": command, "sessionId": uuid.NewString(), "sourceId": "com.microsoft.smartglass", "parameters": []any{}, "linkedXboxId": consoleID}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err

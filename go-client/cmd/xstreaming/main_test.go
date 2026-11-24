@@ -43,7 +43,7 @@ func TestLibraryAndStop(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &app{client: &streaming.Client{}, credentials: auth.NewSession("x"), consoles: []streaming.Console{{ServerID: "123", Name: "Living Room", ConsoleType: "XboxSeriesX", PowerState: "On"}}, titles: []streaming.Title{{TitleID: "game", Name: "Sample Game"}}}
 	tt := ui.NewTester(a.view, 1024, 768)
-	if !tt.HasText("Living Room (XboxSeriesX) — On") || !tt.HasText("Sample Game") {
+	if !tt.HasText("Living Room (XboxSeriesX) — On") || !tt.HasText("Sample Game") || !tt.HasText("Power off console") {
 		t.Fatal(tt.Texts())
 	}
 	a.streamCancel = cancel
