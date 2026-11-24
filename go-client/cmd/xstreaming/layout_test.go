@@ -56,23 +56,26 @@ func TestStreamControlsFitNarrowWindow(t *testing.T) {
 func TestSettingsFitNarrowWindow(t *testing.T) {
 	a := &app{prefs: settings.Defaults()}
 	tt := ui.NewTester(a.view, 480, 480)
+	baseline := ui.NewTester((&app{prefs: settings.Defaults()}).view, 1024, 1200)
+	check := func(text string) {
+		t.Helper()
+		r, ok := tt.Find(text)
+		full, fullOK := baseline.Find(text)
+		if !ok || !fullOK || full.W <= 0 || full.H <= 0 || r.W < full.W*0.95 || r.H < full.H*0.95 || r.X < 0 || r.X+r.W > 480 || r.Y < 0 || r.Y+r.H > 480 {
+			t.Errorf("%s is clipped: %+v, baseline=%+v, found=%v/%v", text, r, full, ok, fullOK)
+		}
+	}
 	labels := []string{"Resolution"}
 	if microphoneSourceSettingsSupported(runtime.GOOS) {
 		labels = append(labels, "Microphone input", "Refresh microphone inputs")
 	}
 	for _, text := range labels {
-		r, ok := tt.Find(text)
-		if !ok || r.W < 50 || r.H < 19 || r.X < 0 || r.X+r.W > 480 {
-			t.Errorf("%s is clipped: %+v, found=%v", text, r, ok)
-		}
+		check(text)
 	}
 	if microphoneSourceSettingsSupported(runtime.GOOS) {
 		tt.Scroll(240, 350, 0, 170)
 	}
 	for _, text := range []string{"Language", "Market"} {
-		r, ok := tt.Find(text)
-		if !ok || r.W < 40 || r.H < 19 || r.X < 0 || r.X+r.W > 480 || r.Y < 0 || r.Y+r.H > 480 {
-			t.Errorf("%s is clipped after scrolling: %+v, found=%v", text, r, ok)
-		}
+		check(text)
 	}
 }
