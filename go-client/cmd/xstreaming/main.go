@@ -529,14 +529,8 @@ func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs se
 	}
 	names, err := catalog.NewClient().Resolve(ctx, titles, prefs.Market, prefs.Language)
 	catalogUnavailable := err != nil
-	if err != nil {
-		names = titles
-		for i := range names {
-			names[i].Name = names[i].Details.ProductID
-			if names[i].Name == "" {
-				names[i].Name = names[i].TitleID
-			}
-		}
+	if ctx.Err() != nil {
+		return
 	}
 	names = playableTitles(names)
 	a.update(func() {
@@ -546,7 +540,7 @@ func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs se
 			a.cloudPage = 0
 			a.cloudStatus = fmt.Sprintf("%d games", len(names))
 			if catalogUnavailable {
-				a.cloudStatus += " (catalog unavailable; showing IDs)"
+				a.cloudStatus += " (some catalog names unavailable)"
 			}
 		}
 	})

@@ -7,6 +7,7 @@ import (
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 )
 
@@ -66,5 +67,55 @@ func TestMissingProducts(t *testing.T) {
 	title.Details.ProductID = "id"
 	if _, err := (&Client{http: s.Client(), endpoint: s.URL}).Resolve(context.Background(), []streaming.Title{title}, "", ""); err == nil {
 		t.Fatal("accepted missing products")
+	}
+}
+
+func TestResolveRetainsSuccessfulBatches(t *testing.T) {
+	var calls atomic.Int32
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		if n == 2 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if n == 1 {
+			fmt.Fprint(w, `{"Products":{"ID0":{"ProductTitle":"Alpha"}}}`)
+		} else {
+			fmt.Fprint(w, `{"Products":{"ID200":{"ProductTitle":"Zulu"}}}`)
+		}
+	}))
+	defer s.Close()
+	titles := make([]streaming.Title, 201)
+	for i := range titles {
+		titles[i].TitleID = fmt.Sprintf("title-%d", i)
+		titles[i].Details.ProductID = fmt.Sprintf("id%d", i)
+	}
+	out, err := (&Client{http: s.Client(), endpoint: s.URL}).Resolve(context.Background(), titles, "US", "en-US")
+	if err == nil || calls.Load() != 3 || len(out) != len(titles) {
+		t.Fatalf("calls=%d titles=%d error=%v", calls.Load(), len(out), err)
+	}
+	names := make(map[string]string)
+	for _, title := range out {
+		names[title.TitleID] = title.Name
+	}
+	if names["title-0"] != "Alpha" || names["title-100"] != "id100" || names["title-200"] != "Zulu" {
+		t.Fatal("lost successful names or fallback", names["title-0"], names["title-100"], names["title-200"])
+	}
+}
+
+func TestResolveStopsAfterConsecutiveFailures(t *testing.T) {
+	var calls atomic.Int32
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer s.Close()
+	titles := make([]streaming.Title, 301)
+	for i := range titles {
+		titles[i].Details.ProductID = fmt.Sprintf("id%d", i)
+	}
+	out, err := (&Client{http: s.Client(), endpoint: s.URL}).Resolve(context.Background(), titles, "US", "en-US")
+	if err == nil || calls.Load() != 2 || len(out) != len(titles) {
+		t.Fatalf("calls=%d titles=%d error=%v", calls.Load(), len(out), err)
 	}
 }

@@ -50,7 +50,7 @@ func (a *app) tr(text string) string {
 	}
 	if strings.Contains(text, " games") {
 		text = strings.Replace(text, " games", " 个游戏", 1)
-		return strings.Replace(text, " (catalog unavailable; showing IDs)", "（目录不可用，显示 ID）", 1)
+		return strings.Replace(text, " (some catalog names unavailable)", "（部分游戏名称不可用）", 1)
 	}
 	return text
 }
