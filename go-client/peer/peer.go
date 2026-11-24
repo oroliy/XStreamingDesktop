@@ -90,5 +90,10 @@ func (p *Peer) AddCandidate(candidate string, mid string, line uint16) error {
 	candidate = strings.TrimPrefix(candidate, "a=")
 	return p.conn.AddICECandidate(webrtc.ICECandidateInit{Candidate: candidate, SDPMid: &mid, SDPMLineIndex: &line})
 }
+
+// OnConnectionStateChange registers a callback for transport state changes.
+func (p *Peer) OnConnectionStateChange(fn func(webrtc.PeerConnectionState)) {
+	p.conn.OnConnectionStateChange(fn)
+}
 func (p *Peer) Channel(name string) *webrtc.DataChannel { return p.channels[name] }
 func (p *Peer) Close() error                            { return p.conn.Close() }

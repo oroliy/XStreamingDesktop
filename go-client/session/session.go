@@ -23,12 +23,13 @@ type Session struct {
 	closeErr error
 }
 type Options struct {
-	Play          streaming.PlayOptions
-	TransferToken func(context.Context) (string, error)
-	RTC           webrtc.Configuration
-	OnTrack       func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
-	OnError       func(error)
-	PreferIPv6    bool
+	Play              streaming.PlayOptions
+	TransferToken     func(context.Context) (string, error)
+	RTC               webrtc.Configuration
+	OnTrack           func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
+	OnError           func(error)
+	OnConnectionState func(webrtc.PeerConnectionState)
+	PreferIPv6        bool
 }
 
 // Start creates and provisions a session, negotiates SDP and exchanges ICE.
@@ -55,6 +56,9 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 	s.peer, err = peer.New(opts.RTC, opts.OnTrack)
 	if err != nil {
 		return nil, err
+	}
+	if opts.OnConnectionState != nil {
+		s.peer.OnConnectionStateChange(opts.OnConnectionState)
 	}
 	s.peer.StartControl(live, opts.OnError)
 	offer, err := s.peer.Offer(live)

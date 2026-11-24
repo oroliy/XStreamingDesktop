@@ -74,9 +74,22 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	s, err := Start(ctx, client, Options{Play: streaming.PlayOptions{Target: "console"}})
+	connected := make(chan struct{}, 1)
+	s, err := Start(ctx, client, Options{Play: streaming.PlayOptions{Target: "console"}, OnConnectionState: func(state webrtc.PeerConnectionState) {
+		if state == webrtc.PeerConnectionStateConnected {
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
+		}
+	}})
 	if err != nil {
 		t.Fatal(err)
+	}
+	select {
+	case <-connected:
+	case <-ctx.Done():
+		t.Fatal("connection state did not reach connected")
 	}
 	if err = s.Close(); err != nil {
 		t.Fatal(err)

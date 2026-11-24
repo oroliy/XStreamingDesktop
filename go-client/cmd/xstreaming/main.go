@@ -348,7 +348,31 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	}
 	s, err := session.Start(ctx, client, session.Options{Play: streaming.PlayOptions{Target: target, Resolution: 1080}, TransferToken: func(ctx context.Context) (string, error) {
 		return credentials.Transfer(ctx)
-	}, RTC: webrtc.Configuration{ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:worldaz.relay.teams.microsoft.com:3478"}}}}, OnTrack: track, OnError: onError})
+	}, RTC: webrtc.Configuration{ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:worldaz.relay.teams.microsoft.com:3478"}}}}, OnTrack: track, OnError: onError, OnConnectionState: func(state webrtc.PeerConnectionState) {
+		if ctx.Err() != nil {
+			return
+		}
+		switch state {
+		case webrtc.PeerConnectionStateConnected:
+			a.update(func() {
+				if ctx.Err() == nil {
+					a.status = "Connected; waiting for video…"
+				}
+			})
+		case webrtc.PeerConnectionStateDisconnected:
+			a.update(func() {
+				if ctx.Err() == nil {
+					a.status = "Connection interrupted…"
+				}
+			})
+		case webrtc.PeerConnectionStateFailed:
+			a.update(func() {
+				if ctx.Err() == nil {
+					a.status = "Connection failed; stop and retry."
+				}
+			})
+		}
+	}})
 	if err != nil {
 		a.update(func() {
 			a.busy = false
@@ -369,7 +393,9 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	a.update(func() {
 		if ctx.Err() == nil {
 			a.busy = false
-			a.status = "Connected; waiting for video…"
+			if a.status == "Starting stream…" || a.status == "Starting cloud game…" {
+				a.status = "Negotiation complete; waiting for connection…"
+			}
 		}
 	})
 	<-ctx.Done()
