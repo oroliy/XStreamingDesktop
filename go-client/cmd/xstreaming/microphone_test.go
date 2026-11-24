@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/oroliy/XStreamingDesktop/go-client/media"
 	"github.com/oroliy/XStreamingDesktop/go-client/session"
 	"github.com/oroliy/XStreamingDesktop/go-client/settings"
 	"github.com/pion/webrtc/v4"
@@ -155,10 +156,10 @@ func TestMicrophoneSourceSettingsUI(t *testing.T) {
 }
 
 func TestMicrophoneSourceOptionsPreserveSelection(t *testing.T) {
-	got := microphoneSourceOptions([]string{"default", "virtual_mic", "virtual_mic"}, "disconnected_mic")
-	want := []string{"default", "virtual_mic", "disconnected_mic"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %v, want %v", got, want)
+	got, names, selected := microphoneSourceOptions([]media.PulseSource{{Name: "default"}, {Name: "virtual_mic", Description: "Virtual mic"}, {Name: "virtual_mic"}}, "disconnected_mic")
+	want := []string{"default", "Virtual mic (virtual_mic)", "disconnected_mic"}
+	if !reflect.DeepEqual(got, want) || names["Virtual mic (virtual_mic)"] != "virtual_mic" || selected != "disconnected_mic" {
+		t.Fatalf("got %v, names=%v, selected=%q", got, names, selected)
 	}
 }
 
@@ -167,12 +168,12 @@ func TestChooseDiscoveredMicrophoneSource(t *testing.T) {
 		t.Skip("microphone input setting is Linux-only")
 	}
 	path := filepath.Join(t.TempDir(), "settings.json")
-	a := &app{prefs: settings.Defaults(), settingsPath: path, micSourceDraft: "default", micSources: []string{"virtual_mic"}}
+	a := &app{prefs: settings.Defaults(), settingsPath: path, micSourceDraft: "default", micSources: []media.PulseSource{{Name: "virtual_mic", Description: "Virtual mic"}}}
 	tt := ui.NewTester(a.view, 1024, 768)
 	if err := tt.Click("Available microphone inputs"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.Click("virtual_mic"); err != nil {
+	if err := tt.Click("Virtual mic (virtual_mic)"); err != nil {
 		t.Fatalf("%v; visible: %v", err, tt.Texts())
 	}
 	if err := tt.Click("Save microphone input"); err != nil {
@@ -189,9 +190,9 @@ func TestMicrophoneDiscoveryFailureKeepsManualChoice(t *testing.T) {
 		t.Skip("microphone input setting is Linux-only")
 	}
 	path := filepath.Join(t.TempDir(), "settings.json")
-	a := &app{prefs: settings.Defaults(), settingsPath: path, micSourceDraft: "disconnected_mic", micSourcesLoading: true, micSources: []string{"previous_mic"}}
+	a := &app{prefs: settings.Defaults(), settingsPath: path, micSourceDraft: "disconnected_mic", micSourcesLoading: true, micSources: []media.PulseSource{{Name: "previous_mic"}}}
 	a.finishMicrophoneSources(nil, errors.New("service unavailable"))
-	if a.micSourcesLoading || a.micSourceDraft != "disconnected_mic" || !reflect.DeepEqual(a.micSources, []string{"previous_mic"}) {
+	if a.micSourcesLoading || a.micSourceDraft != "disconnected_mic" || !reflect.DeepEqual(a.micSources, []media.PulseSource{{Name: "previous_mic"}}) {
 		t.Fatal("failed discovery changed the existing selection")
 	}
 	tt := ui.NewTester(a.view, 1024, 768)
@@ -204,5 +205,17 @@ func TestMicrophoneDiscoveryFailureKeepsManualChoice(t *testing.T) {
 	saved, err := settings.Load(path)
 	if err != nil || saved.MicrophoneSource != "disconnected_mic" {
 		t.Fatalf("manual source=%q error=%v", saved.MicrophoneSource, err)
+	}
+}
+
+func TestMicrophoneDiscoveryUpdatesDisplayWithoutChangingSource(t *testing.T) {
+	a := &app{micSourceDraft: "virtual_mic", micSourceChoice: "virtual_mic"}
+	a.finishMicrophoneSources([]media.PulseSource{{Name: "virtual_mic", Description: "Virtual microphone"}}, nil)
+	if a.micSourceDraft != "virtual_mic" || a.micSourceChoice != "Virtual microphone (virtual_mic)" {
+		t.Fatalf("draft=%q display=%q", a.micSourceDraft, a.micSourceChoice)
+	}
+	a.finishMicrophoneSources(nil, nil)
+	if a.micSourceDraft != "virtual_mic" || a.micSourceChoice != "virtual_mic" {
+		t.Fatalf("disconnected source lost: draft=%q display=%q", a.micSourceDraft, a.micSourceChoice)
 	}
 }

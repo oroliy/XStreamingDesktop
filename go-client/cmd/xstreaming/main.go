@@ -57,7 +57,8 @@ type app struct {
 	micStopping       bool
 	micStatus         string
 	micSourceDraft    string
-	micSources        []string
+	micSources        []media.PulseSource
+	micSourceChoice   string
 	micSourcesLoading bool
 	micSourcesStatus  string
 	consoleText       string
@@ -310,7 +311,13 @@ func (a *app) view(c *ui.Context) {
 			if runtime.GOOS == "linux" {
 				ui.Row(c).Gap(8).Children(func() {
 					ui.Text(c, a.tr("Microphone input"))
-					ui.Select(c.Key("microphone-sources"), &a.micSourceDraft, microphoneSourceOptions(a.micSources, a.micSourceDraft)).Label(a.tr("Available microphone inputs")).Width(280)
+					options, names, selected := microphoneSourceOptions(a.micSources, a.micSourceDraft)
+					if a.micSourceChoice == "" {
+						a.micSourceChoice = selected
+					}
+					if ui.Select(c.Key("microphone-sources"), &a.micSourceChoice, options).Label(a.tr("Available microphone inputs")).Width(280).Changed() {
+						a.micSourceDraft = names[a.micSourceChoice]
+					}
 					if ui.Button(c.Key("refresh-microphone-sources"), a.tr("Refresh microphone inputs")).Disabled(a.micSourcesLoading).Clicked() {
 						a.refreshMicrophoneSources()
 					}
@@ -319,7 +326,9 @@ func (a *app) view(c *ui.Context) {
 					ui.Text(c, a.tr(a.micSourcesStatus))
 				}
 				ui.Row(c).Gap(8).Children(func() {
-					ui.TextInput(c.Key("microphone-source"), &a.micSourceDraft).Label(a.tr("PulseAudio input name")).Placeholder("default").MaxLength(256).Width(300)
+					if ui.TextInput(c.Key("microphone-source"), &a.micSourceDraft).Label(a.tr("PulseAudio input name")).Placeholder("default").MaxLength(256).Width(300).Changed() {
+						_, _, a.micSourceChoice = microphoneSourceOptions(a.micSources, a.micSourceDraft)
+					}
 					if ui.Button(c.Key("save-microphone-source"), a.tr("Save microphone input")).Clicked() {
 						a.saveMicrophoneSource()
 					}

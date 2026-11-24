@@ -30,16 +30,34 @@ func (s liveMicrophoneSession) StartMicrophone(ctx context.Context) (microphoneW
 
 type microphoneEncoder func(context.Context, []string, func(pionmedia.Sample) error) error
 
-func microphoneSourceOptions(sources []string, selected string) []string {
+func microphoneSourceOptions(sources []media.PulseSource, selected string) ([]string, map[string]string, string) {
 	options := []string{"default"}
 	seen := map[string]bool{"default": true}
-	for _, source := range append(append([]string(nil), sources...), selected) {
-		if source != "" && !seen[source] {
-			seen[source] = true
-			options = append(options, source)
+	names := map[string]string{"default": "default"}
+	choice := "default"
+	for _, source := range sources {
+		if source.Name != "" && !seen[source.Name] {
+			seen[source.Name] = true
+			label := source.Name
+			if source.Description != "" && source.Description != source.Name {
+				label = source.Description + " (" + source.Name + ")"
+			}
+			options = append(options, label)
+			names[label] = source.Name
+			if selected == source.Name {
+				choice = label
+			}
 		}
 	}
-	return options
+	if selected != "" && !seen[selected] {
+		choice = selected
+		if _, exists := names[choice]; exists {
+			choice += " (manual)"
+		}
+		options = append(options, choice)
+		names[choice] = selected
+	}
+	return options, names, choice
 }
 
 func (a *app) refreshMicrophoneSources() {
@@ -61,13 +79,14 @@ func (a *app) refreshMicrophoneSources() {
 	}()
 }
 
-func (a *app) finishMicrophoneSources(sources []string, err error) {
+func (a *app) finishMicrophoneSources(sources []media.PulseSource, err error) {
 	a.micSourcesLoading = false
 	if err != nil {
 		a.micSourcesStatus = "Unable to list microphone inputs: " + err.Error()
 		return
 	}
 	a.micSources = sources
+	_, _, a.micSourceChoice = microphoneSourceOptions(a.micSources, a.micSourceDraft)
 	a.micSourcesStatus = "Microphone inputs refreshed."
 	if len(sources) == 0 {
 		a.micSourcesStatus = "No microphone inputs found."
@@ -123,6 +142,7 @@ func (a *app) saveMicrophoneSource() {
 	}
 	a.prefs = next
 	a.micSourceDraft = source
+	_, _, a.micSourceChoice = microphoneSourceOptions(a.micSources, source)
 	a.status = "Microphone input saved."
 }
 

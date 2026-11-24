@@ -9,9 +9,14 @@ import (
 	"strings"
 )
 
-// PulseSources lists PulseAudio source names using the existing FFmpeg dependency.
+type PulseSource struct {
+	Name        string
+	Description string
+}
+
+// PulseSources lists PulseAudio sources using the existing FFmpeg dependency.
 // It does not open or record from a source.
-func PulseSources(ctx context.Context) ([]string, error) {
+func PulseSources(ctx context.Context) ([]PulseSource, error) {
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-sources", "pulse")
 	configureMediaProcess(cmd)
 	cmd.Env = append(os.Environ(), "LC_ALL=C")
@@ -48,20 +53,28 @@ func (b *boundedOutput) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-func parsePulseSources(output string) ([]string, error) {
+func parsePulseSources(output string) ([]PulseSource, error) {
 	if !strings.Contains(output, "Auto-detected sources for pulse:") || strings.Contains(output, "Cannot list sources:") {
 		return nil, errors.New("PulseAudio inputs unavailable")
 	}
 	seen := make(map[string]bool)
-	var sources []string
+	var sources []PulseSource
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "*"))
-		name, _, ok := strings.Cut(line, " [")
+		name, detail, ok := strings.Cut(line, " [")
 		if !ok || !validPulseName(name) || seen[name] {
 			continue
 		}
+		end := strings.LastIndex(detail, "]")
+		if end < 0 {
+			continue
+		}
+		description := []rune(strings.TrimSpace(detail[:end]))
+		if len(description) > 160 {
+			description = description[:160]
+		}
 		seen[name] = true
-		sources = append(sources, name)
+		sources = append(sources, PulseSource{Name: name, Description: string(description)})
 	}
 	return sources, nil
 }
