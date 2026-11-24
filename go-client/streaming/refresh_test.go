@@ -1,0 +1,57 @@
+package streaming
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"sync"
+	"sync/atomic"
+	"testing"
+)
+
+func TestConcurrentTokenRefresh(t *testing.T) {
+	var refreshes atomic.Int32
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer new" {
+			w.WriteHeader(401)
+			return
+		}
+		w.Write([]byte(`{"results":[]}`))
+	}))
+	defer s.Close()
+	c, _ := NewClient(s.URL, "old", "cloud", s.Client())
+	c.SetRefresh(func(context.Context) (string, string, error) { refreshes.Add(1); return "new", s.URL, nil })
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := c.Titles(context.Background()); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if refreshes.Load() != 1 {
+		t.Fatalf("refreshes: %d", refreshes.Load())
+	}
+}
+func TestRefreshFailureAndRetryLimit(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(403) }))
+	defer s.Close()
+	c, _ := NewClient(s.URL, "old", "cloud", s.Client())
+	sentinel := errors.New("refresh failed")
+	c.SetRefresh(func(context.Context) (string, string, error) { return "", "", sentinel })
+	_, err := c.Titles(context.Background())
+	if !errors.Is(err, sentinel) {
+		t.Fatal(err)
+	}
+	count := 0
+	c.SetRefresh(func(context.Context) (string, string, error) { count++; return "new", s.URL, nil })
+	_, err = c.Titles(context.Background())
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) || count != 1 {
+		t.Fatal(err, count)
+	}
+}

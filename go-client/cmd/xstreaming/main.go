@@ -31,7 +31,7 @@ type app struct {
 	cloud             *streaming.Client
 	titles            []streaming.Title
 	cloudStatus       string
-	refresh           string
+	credentials       *auth.Session
 	streamCancel      context.CancelFunc
 	frame             *ui.Bitmap
 	framePending      atomic.Bool
@@ -77,7 +77,7 @@ func (a *app) view(c *ui.Context) {
 						a.streamCancel = cancel
 						a.busy = true
 						a.status = "Starting stream…"
-						go a.startStream(ctx, a.client, a.refresh, console.ServerID)
+						go a.startStream(ctx, a.client, a.credentials, console.ServerID)
 					}
 				}
 			}
@@ -96,7 +96,7 @@ func (a *app) view(c *ui.Context) {
 						a.streamCancel = cancel
 						a.busy = true
 						a.status = "Starting cloud game…"
-						go a.startStream(ctx, a.cloud, a.refresh, title.TitleID)
+						go a.startStream(ctx, a.cloud, a.credentials, title.TitleID)
 					}
 				}
 			}
@@ -151,6 +151,8 @@ func (a *app) signIn() {
 		a.fail(err)
 		return
 	}
+	credentials := auth.NewSession(token.RefreshToken)
+	client.SetRefresh(func(ctx context.Context) (string, string, error) { return credentials.StreamingToken(ctx, "home") })
 	consoles, err := client.Consoles(a.ctx)
 	if err != nil {
 		a.fail(err)
@@ -159,14 +161,14 @@ func (a *app) signIn() {
 	a.update(func() {
 		a.busy = false
 		a.client = client
-		a.refresh = token.RefreshToken
+		a.credentials = credentials
 		a.consoles = consoles
 		a.status = fmt.Sprintf("Signed in. Found %d console(s).", len(consoles))
 		a.cloudStatus = "Loading cloud games…"
 	})
-	go a.loadCloud(xbox, xsts.Token)
+	go a.loadCloud(xbox, xsts.Token, credentials)
 }
-func (a *app) loadCloud(xbox *auth.XboxClient, token string) {
+func (a *app) loadCloud(xbox *auth.XboxClient, token string, credentials *auth.Session) {
 	cloud, err := xbox.Streaming(a.ctx, token, "xgpuweb")
 	if err != nil {
 		cloud, err = xbox.Streaming(a.ctx, token, "xgpuwebf2p")
@@ -185,6 +187,7 @@ func (a *app) loadCloud(xbox *auth.XboxClient, token string) {
 		a.update(func() { a.cloudStatus = "Invalid cloud service region." })
 		return
 	}
+	client.SetRefresh(func(ctx context.Context) (string, string, error) { return credentials.StreamingToken(ctx, "cloud") })
 	titles, err := client.Titles(a.ctx)
 	if err != nil {
 		a.update(func() { a.cloudStatus = "Unable to load cloud games." })
@@ -202,7 +205,7 @@ func (a *app) loadCloud(xbox *auth.XboxClient, token string) {
 	}
 	a.update(func() { a.cloud = client; a.titles = names; a.cloudStatus = fmt.Sprintf("%d games", len(names)) })
 }
-func (a *app) startStream(ctx context.Context, client *streaming.Client, refresh, target string) {
+func (a *app) startStream(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string) {
 	onError := func(err error) {
 		if ctx.Err() == nil {
 			a.update(func() {
@@ -263,8 +266,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, refresh
 		}
 	}
 	s, err := session.Start(ctx, client, session.Options{Play: streaming.PlayOptions{Target: target, Resolution: 1080}, TransferToken: func(ctx context.Context) (string, error) {
-		t, err := auth.NewClient().TransferToken(ctx, refresh)
-		return t.AccessToken, err
+		return credentials.Transfer(ctx)
 	}, RTC: webrtc.Configuration{ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:worldaz.relay.teams.microsoft.com:3478"}}}}, OnTrack: track, OnError: onError})
 	if err != nil {
 		a.update(func() {

@@ -9,7 +9,7 @@ go test ./...
 go run ./cmd/xstreaming
 ```
 
-The `streaming` package currently implements session creation, state polling, keepalive, stop, and SDP/ICE signaling requests using an existing streaming token. ICE candidate normalization is available separately; streaming token refresh is not yet implemented. The `auth` package implements Microsoft device-code and refresh-token requests plus Xbox user, XSTS and streaming token exchange. The preview has device-code sign-in, console and cloud game lists; automatic token refresh and persistent login are not yet implemented. Real account integration has not yet been verified. Its tests use a local HTTP server and do not require an Xbox account.
+The `streaming` package currently implements session creation, state polling, keepalive, stop, and SDP/ICE signaling requests using an existing streaming token. ICE candidate normalization is available separately; streaming token refresh retries once after HTTP 401 or 403. The `auth` package implements Microsoft device-code and refresh-token requests plus Xbox user, XSTS and streaming token exchange. The preview has device-code sign-in, console and cloud game lists; tokens refresh in memory when needed; persistent login is not yet implemented. Real account integration has not yet been verified. Its tests use a local HTTP server and do not require an Xbox account.
 
 The `peer` package provides a Pion WebRTC peer with audio/video transceivers and Xbox data channels. Local tests negotiate a peer connection, send a data-channel message, and receive a video RTP packet. The `session` package connects service signaling to the peer and handles provisioning and cleanup; it is connected to the preview UI but has not been tested with an Xbox.
 

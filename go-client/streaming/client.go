@@ -10,14 +10,18 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Client struct {
-	base  *url.URL
-	token string
-	kind  string
-	http  *http.Client
+	mu        sync.Mutex
+	refreshMu sync.Mutex
+	refresh   func(context.Context) (string, string, error)
+	base      *url.URL
+	token     string
+	kind      string
+	http      *http.Client
 }
 
 // NewClient accepts the regional streaming service URL and its gsToken.
@@ -48,7 +52,49 @@ func (c *Client) request(ctx context.Context, method, path string, body any, out
 	return c.requestHeaders(ctx, method, path, body, out, nil)
 }
 
+// SetRefresh configures a token and regional URL refresh after an authentication failure.
+func (c *Client) SetRefresh(fn func(context.Context) (string, string, error)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.refresh = fn
+}
 func (c *Client) requestHeaders(ctx context.Context, method, path string, body any, out any, headers http.Header) (int, error) {
+	c.mu.Lock()
+	old := c.token
+	c.mu.Unlock()
+	status, err := c.requestOnce(ctx, method, path, body, out, headers)
+	if status != 401 && status != 403 {
+		return status, err
+	}
+	c.refreshMu.Lock()
+	defer c.refreshMu.Unlock()
+	c.mu.Lock()
+	current, fn := c.token, c.refresh
+	c.mu.Unlock()
+	if fn == nil {
+		return status, err
+	}
+	if current == old {
+		token, base, e := fn(ctx)
+		if e != nil {
+			return status, fmt.Errorf("refresh streaming token: %w", e)
+		}
+		validated, e := NewClient(base, token, c.kind, c.http)
+		if e != nil {
+			return status, e
+		}
+		c.mu.Lock()
+		if c.base.Scheme == "https" && validated.base.Scheme != "https" {
+			c.mu.Unlock()
+			return status, fmt.Errorf("refusing insecure streaming region")
+		}
+		c.token = validated.token
+		c.base = validated.base
+		c.mu.Unlock()
+	}
+	return c.requestOnce(ctx, method, path, body, out, headers)
+}
+func (c *Client) requestOnce(ctx context.Context, method, path string, body any, out any, headers http.Header) (int, error) {
 	var data io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -57,13 +103,16 @@ func (c *Client) requestHeaders(ctx context.Context, method, path string, body a
 		}
 		data = bytes.NewReader(b)
 	}
+	c.mu.Lock()
 	u := *c.base
+	token := c.token
+	c.mu.Unlock()
 	u.Path, u.RawQuery, _ = strings.Cut(path, "?")
 	req, err := http.NewRequestWithContext(ctx, method, u.String(), data)
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	for key, values := range headers {
 		for _, value := range values {
