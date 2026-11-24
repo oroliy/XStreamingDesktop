@@ -26,7 +26,7 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/v5/sessions/home/play":
-			fmt.Fprint(w, `{"sessionPath":"/v5/sessions/abc"}`)
+			fmt.Fprint(w, `{"sessionPath":"/v5/sessions/home/abc"}`)
 		case r.URL.Path == "/v5/sessions/home/abc/state":
 			fmt.Fprint(w, `{"state":"Provisioned"}`)
 		case r.URL.Path == "/v5/sessions/home/abc/sdp" && r.Method == "POST":

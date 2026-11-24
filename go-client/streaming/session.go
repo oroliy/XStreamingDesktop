@@ -29,6 +29,9 @@ func (c *Client) SessionID(result PlayResult) (string, error) {
 		return "", errors.New("invalid session path")
 	}
 	id := strings.TrimPrefix(result.SessionPath, prefix)
+	if strings.HasPrefix(id, c.kind+"/") {
+		id = strings.TrimPrefix(id, c.kind+"/")
+	}
 	if _, err := c.sessionPath(id); err != nil {
 		return "", err
 	}
