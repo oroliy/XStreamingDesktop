@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 )
@@ -55,6 +56,29 @@ func TestLocalNegotiationAndDataChannel(t *testing.T) {
 	}
 	select {
 	case <-opened:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	sender := local.Input()
+	if err = sender.Init(0); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case data := <-received:
+		if len(data) != 15 || data[0] != 8 {
+			t.Fatal("invalid metadata")
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if err = sender.SendGamepads([]protocol.Gamepad{{Buttons: protocol.A}}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case data := <-received:
+		if len(data) != 38 || data[0] != 2 {
+			t.Fatal("invalid gamepad packet")
+		}
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
