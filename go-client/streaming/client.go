@@ -45,6 +45,10 @@ func (e *HTTPError) Error() string {
 }
 
 func (c *Client) request(ctx context.Context, method, path string, body any, out any) (int, error) {
+	return c.requestHeaders(ctx, method, path, body, out, nil)
+}
+
+func (c *Client) requestHeaders(ctx context.Context, method, path string, body any, out any, headers http.Header) (int, error) {
 	var data io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -61,6 +65,11 @@ func (c *Client) request(ctx context.Context, method, path string, body any, out
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
+	for key, values := range headers {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return 0, err
@@ -85,7 +94,7 @@ func (c *Client) sessionPath(id string) (string, error) {
 	if id == "" || strings.ContainsAny(id, "/?#") || id == "." || id == ".." {
 		return "", fmt.Errorf("invalid session ID")
 	}
-	return "/v5/sessions/" + c.kind + "/" + url.PathEscape(id), nil
+	return "/v5/sessions/" + c.kind + "/" + id, nil
 }
 
 // State reads a session's state, polling on HTTP 204 until a response or cancellation.

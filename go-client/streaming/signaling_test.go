@@ -1,0 +1,82 @@
+package streaming
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+func TestStartAndExchange(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v5/sessions/cloud/play":
+			var body struct {
+				Title    string `json:"titleId"`
+				Server   string `json:"serverId"`
+				Settings struct {
+					OS     string `json:"osName"`
+					Locale string `json:"locale"`
+				} `json:"settings"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			if body.Title != "game" || body.Server != "" || body.Settings.OS != "windows" || body.Settings.Locale != "en-US" || r.Header.Get("X-MS-Device-Info") == "" {
+				t.Errorf("bad play request: %+v", body)
+			}
+			w.Write([]byte(`{"sessionPath":"/v5/sessions/cloud/abc"}`))
+		case r.URL.Path == "/v5/sessions/cloud/abc/sdp" && r.Method == http.MethodPost:
+			var body struct {
+				SDP           string         `json:"sdp"`
+				Configuration map[string]any `json:"configuration"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			if body.SDP != "offer" || body.Configuration["input"] == nil {
+				t.Error("bad SDP offer")
+			}
+			w.WriteHeader(204)
+		case r.URL.Path == "/v5/sessions/cloud/abc/sdp" && r.Method == http.MethodGet:
+			w.Write([]byte(`{"exchangeResponse":"{\"sdp\":\"answer\"}"}`))
+		case r.URL.Path == "/v5/sessions/cloud/abc/ice" && r.Method == http.MethodPost:
+			w.WriteHeader(204)
+		case r.URL.Path == "/v5/sessions/cloud/abc/ice" && r.Method == http.MethodGet:
+			w.Write([]byte(`{"exchangeResponse":"[]"}`))
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer s.Close()
+	c, err := NewClient(s.URL, "token", "cloud", s.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := c.Start(context.Background(), PlayOptions{Target: "game", Resolution: 1080})
+	if err != nil || result.SessionPath != "/v5/sessions/cloud/abc" {
+		t.Fatalf("start: %+v %v", result, err)
+	}
+	answer, err := c.ExchangeSDP(context.Background(), "abc", "offer", false)
+	if err != nil || string(answer) != `{"sdp":"answer"}` {
+		t.Fatalf("sdp: %s %v", answer, err)
+	}
+	ice, err := c.ExchangeICE(context.Background(), "abc", []any{})
+	if err != nil || string(ice) != `[]` {
+		t.Fatalf("ice: %s %v", ice, err)
+	}
+}
+
+func TestExchangePollingCancellation(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	defer s.Close()
+	c, _ := NewClient(s.URL, "token", "home", s.Client())
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := c.ExchangeICE(ctx, "abc", nil); err != context.DeadlineExceeded {
+		t.Fatalf("got %v", err)
+	}
+}
