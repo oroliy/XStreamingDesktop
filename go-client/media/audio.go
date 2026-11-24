@@ -32,6 +32,7 @@ func NewAudioPlayer(ctx context.Context, channels uint16, volume int) (*AudioPla
 		return nil, errors.New("volume must be between 0 and 100")
 	}
 	cmd := exec.CommandContext(ctx, "ffplay", "-loglevel", "error", "-nodisp", "-autoexit", "-volume", strconv.Itoa(volume), "-probesize", "32", "-analyzeduration", "0", "-i", "pipe:0")
+	configureMediaProcess(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err

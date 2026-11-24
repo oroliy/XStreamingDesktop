@@ -35,6 +35,7 @@ func NewVideoDecoder(ctx context.Context, onFrame func(image.Image)) (*VideoDeco
 		return nil, errors.New("frame callback required")
 	}
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-loglevel", "error", "-probesize", "32", "-analyzeduration", "0", "-flags", "low_delay", "-f", "h264", "-i", "pipe:0", "-an", "-f", "image2pipe", "-vcodec", "png", "pipe:1")
+	configureMediaProcess(cmd)
 	return newVideoDecoder(cmd, onFrame)
 }
 

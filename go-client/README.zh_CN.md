@@ -6,6 +6,8 @@
 
 在本仓库的 GitHub Actions 中选择成功的 **Go client** 工作流运行，从 Artifacts 下载对应平台的 `xstreaming-go-*` 文件。构建产物不包含 FFmpeg：请自行安装同时包含 `ffmpeg` 和 `ffplay` 的版本，并将它们加入 PATH。程序用 `ffmpeg` 解码视频、用 `ffplay` 播放音频。
 
+macOS 从 Finder 启动时的 PATH 可能与终端不同；如果程序找不到 FFmpeg，可先在已配置 PATH 的终端中启动。
+
 Linux 和 macOS 解压后可能需要 `chmod +x xstreaming`，然后从终端运行 `./xstreaming`。Windows 运行 `xstreaming.exe`。这些产物是未经签名的预览二进制，尚未打包成安装程序。运行时还需要目标平台的 MyGo 图形环境，具体参见 [MyGo 文档](https://github.com/egoist/mygo)。
 
 ## 从源码构建
@@ -18,12 +20,12 @@ go build -o xstreaming ./cmd/xstreaming
 ./xstreaming
 ```
 
-Windows 上可运行 `go build -o xstreaming.exe ./cmd/xstreaming`，然后启动 `xstreaming.exe`。Linux 需要图形会话；读取手柄还需要访问对应 `/dev/input` 设备的权限。
+Windows 上可运行 `go build -ldflags=-H=windowsgui -o xstreaming.exe ./cmd/xstreaming`，然后启动 `xstreaming.exe`。Linux 需要图形会话；读取手柄还需要访问对应 `/dev/input` 设备的权限。
 
 ## 当前范围
 
 - 支持微软设备代码登录（可从窗口打开验证页面，并手动输入代码），以及系统凭据库可用时的登录恢复；可在界面中退出登录。系统凭据库不可用时只在当前运行期间保存登录。
-- 支持查询主机、发送主机唤醒请求、查询云游戏目录和尝试启动串流；主机需要允许远程管理，唤醒请求成功不代表已开机，可使用“Refresh consoles”刷新状态；云游戏取决于账号权益和地区。可搜索游戏并切换简体中文界面，设置串流分辨率、启动音量、IPv6 候选地址优先、游戏语言和目录市场；串流时可切换全屏，更改语言或市场后需要重新加载目录。
+- 支持查询主机、发送主机唤醒请求、查询云游戏目录和尝试启动串流；主机需要允许远程管理，唤醒请求成功不代表已开机，可使用“Refresh consoles”刷新状态；云游戏取决于账号权益和地区。可搜索游戏并切换简体中文界面，设置串流分辨率、启动音量、IPv6 候选地址优先、游戏语言和目录市场；串流时可切换全屏，更改语言或市场后会自动重新加载目录。
 - 支持最多四个手柄的基本输入和可调摇杆死区，也可在串流时启用键盘手柄模式：WASD 为左摇杆、TFGH 为右摇杆、IJKL 为面键、方向键为方向键、1/4 为扳机、2/3 为肩键，Esc 退出键盘模式。云游戏排队时会在服务提供数据时显示预计等待时间。尚不支持震动。音视频同步、延迟和真实 Xbox 兼容性尚未验证。
 - 目录使用系统的本地配置路径，登录凭据使用系统凭据库；FFmpeg/ffplay 是独立运行依赖，不随产物分发。
 

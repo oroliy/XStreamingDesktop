@@ -53,10 +53,11 @@ jobs:
           mkdir -p "$RUNNER_TEMP/go-client"
           if [ "$GOOS" = windows ]; then
             binary="xstreaming.exe"
+            go build -ldflags=-H=windowsgui -o "$RUNNER_TEMP/go-client/$binary" ./cmd/xstreaming
           else
             binary="xstreaming"
+            go build -o "$RUNNER_TEMP/go-client/$binary" ./cmd/xstreaming
           fi
-          go build -o "$RUNNER_TEMP/go-client/$binary" ./cmd/xstreaming
           cp README.md README.zh_CN.md "$RUNNER_TEMP/go-client/"
         env:
           GOOS: ${{ matrix.goos }}
