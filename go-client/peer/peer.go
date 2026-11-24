@@ -1,0 +1,77 @@
+// Package peer provides the WebRTC transport used by the Go client.
+package peer
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/pion/webrtc/v4"
+)
+
+type Peer struct {
+	conn     *webrtc.PeerConnection
+	channels map[string]*webrtc.DataChannel
+}
+
+// New creates the media transceivers and the channels used by xstreaming-player.
+// onTrack must consume the track's RTP packets until ReadRTP returns an error.
+func New(config webrtc.Configuration, onTrack func(*webrtc.TrackRemote, *webrtc.RTPReceiver)) (*Peer, error) {
+	conn, err := webrtc.NewPeerConnection(config)
+	if err != nil {
+		return nil, err
+	}
+	p := &Peer{conn: conn, channels: make(map[string]*webrtc.DataChannel)}
+	fail := func(err error) (*Peer, error) { _ = conn.Close(); return nil, err }
+	if onTrack != nil {
+		conn.OnTrack(onTrack)
+	}
+	for _, channel := range []struct{ name, protocol string }{{"input", "1.0"}, {"chat", "chatV1"}, {"control", "controlV1"}, {"message", "messageV1"}} {
+		protocol := channel.protocol
+		dc, err := conn.CreateDataChannel(channel.name, &webrtc.DataChannelInit{Protocol: &protocol})
+		if err != nil {
+			return fail(err)
+		}
+		p.channels[channel.name] = dc
+	}
+	if _, err = conn.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendrecv}); err != nil {
+		return fail(err)
+	}
+	if _, err = conn.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}); err != nil {
+		return fail(err)
+	}
+	return p, nil
+}
+
+// Offer gathers candidates until completion; cancellation leaves the peer open for Close.
+func (p *Peer) Offer(ctx context.Context) (webrtc.SessionDescription, error) {
+	offer, err := p.conn.CreateOffer(nil)
+	if err != nil {
+		return webrtc.SessionDescription{}, err
+	}
+	done := webrtc.GatheringCompletePromise(p.conn)
+	if err = p.conn.SetLocalDescription(offer); err != nil {
+		return webrtc.SessionDescription{}, err
+	}
+	select {
+	case <-ctx.Done():
+		return webrtc.SessionDescription{}, ctx.Err()
+	case <-done:
+	}
+	return *p.conn.LocalDescription(), nil
+}
+func (p *Peer) SetAnswer(sdp string) error {
+	if sdp == "" {
+		return fmt.Errorf("empty SDP answer")
+	}
+	return p.conn.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: sdp})
+}
+func (p *Peer) AddCandidate(candidate string, mid string, line uint16) error {
+	if candidate == "" || candidate == "a=end-of-candidates" || candidate == "end-of-candidates" {
+		return nil
+	}
+	candidate = strings.TrimPrefix(candidate, "a=")
+	return p.conn.AddICECandidate(webrtc.ICECandidateInit{Candidate: candidate, SDPMid: &mid, SDPMLineIndex: &line})
+}
+func (p *Peer) Channel(name string) *webrtc.DataChannel { return p.channels[name] }
+func (p *Peer) Close() error                            { return p.conn.Close() }
