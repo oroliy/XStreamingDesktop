@@ -121,12 +121,14 @@ func (a *app) view(c *ui.Context) {
 			if a.showPerformance {
 				performanceLabel = "Hide performance"
 			}
-			if ui.Button(c.Key("performance"), a.tr(performanceLabel)).Clicked() {
-				a.showPerformance = !a.showPerformance
-			}
-			if ui.Button(c.Key("hide-stream-controls"), a.tr("Hide controls")).Clicked() {
-				a.controlsHidden = true
-			}
+			ui.Row(c).Gap(8).Children(func() {
+				if ui.Button(c.Key("performance"), a.tr(performanceLabel)).Clicked() {
+					a.showPerformance = !a.showPerformance
+				}
+				if ui.Button(c.Key("hide-stream-controls"), a.tr("Hide controls")).Clicked() {
+					a.controlsHidden = true
+				}
+			})
 			ui.Row(c).Gap(8).Children(func() {
 				ui.Text(c, a.tr("Video display"))
 				label := a.tr(a.prefs.VideoFit)
@@ -150,17 +152,19 @@ func (a *app) view(c *ui.Context) {
 			if a.fullscreen {
 				label = "Exit full screen"
 			}
-			if ui.Button(c.Key("fullscreen"), a.tr(label)).Clicked() && a.win != nil {
-				a.win.ToggleFullScreen()
-			}
-			if ui.Button(c.Key("stop"), a.tr("Stop stream")).Clicked() {
-				a.stopStream(false)
-			}
-			if a.streamCancel != nil && a.streamHomeID != "" && a.streamDone != nil && a.streamPowerOff != nil && a.accountCtx != nil && a.credentials != nil {
-				if ui.Button(c.Key("stop-and-power-off"), a.tr("Disconnect and power off")).Clicked() {
-					a.stopStream(true)
+			ui.Row(c).Gap(8).Children(func() {
+				if ui.Button(c.Key("fullscreen"), a.tr(label)).Clicked() && a.win != nil {
+					a.win.ToggleFullScreen()
 				}
-			}
+				if ui.Button(c.Key("stop"), a.tr("Stop stream")).Clicked() {
+					a.stopStream(false)
+				}
+				if a.streamCancel != nil && a.streamHomeID != "" && a.streamDone != nil && a.streamPowerOff != nil && a.accountCtx != nil && a.credentials != nil {
+					if ui.Button(c.Key("stop-and-power-off"), a.tr("Disconnect and power off")).Clicked() {
+						a.stopStream(true)
+					}
+				}
+			})
 		}
 		if a.status != "" {
 			ui.Text(c, a.tr(a.status))
@@ -214,12 +218,14 @@ func (a *app) view(c *ui.Context) {
 				ui.Text(c, a.tr(a.micStatus))
 			}
 			if a.streamConnected && a.inputReady {
-				if ui.Button(c.Key("press-nexus"), a.tr("Press Xbox button")).Clicked() {
-					a.keyboard.PressNexus(150 * time.Millisecond)
-				}
-				if a.streamHomeID != "" && ui.Button(c.Key("hold-nexus"), a.tr("Hold Xbox button")).Clicked() {
-					a.keyboard.PressNexus(time.Second)
-				}
+				ui.Row(c).Gap(8).Children(func() {
+					if ui.Button(c.Key("press-nexus"), a.tr("Press Xbox button")).Clicked() {
+						a.keyboard.PressNexus(150 * time.Millisecond)
+					}
+					if a.streamHomeID != "" && ui.Button(c.Key("hold-nexus"), a.tr("Hold Xbox button")).Clicked() {
+						a.keyboard.PressNexus(time.Second)
+					}
+				})
 			}
 			label := "Enable keyboard controller"
 			if a.keyboardEnabled {
