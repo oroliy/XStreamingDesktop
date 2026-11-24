@@ -1165,6 +1165,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	}
 	failed := ctx.Err() == nil
 	connectionTimedOut := failed && errors.Is(s.Err(), session.ErrConnectionTimeout)
+	disconnectTimedOut := failed && errors.Is(s.Err(), session.ErrDisconnectTimeout)
 	cleanupErr := s.Close()
 	a.update(func() {
 		if powerOff.Load() {
@@ -1183,7 +1184,11 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		a.keyboardEnabled = false
 		a.keyboard.Set(false, protocol.Gamepad{})
 		a.keyboard.ClearNexus()
-		if connectionTimedOut && cleanupErr == nil {
+		if disconnectTimedOut && cleanupErr == nil {
+			a.status = "Connection did not recover; please retry."
+		} else if disconnectTimedOut {
+			a.status = "Connection did not recover; remote session cleanup failed: " + cleanupErr.Error()
+		} else if connectionTimedOut && cleanupErr == nil {
 			a.status = "Connection timed out; please retry."
 		} else if connectionTimedOut {
 			a.status = "Connection timed out; remote session cleanup failed: " + cleanupErr.Error()

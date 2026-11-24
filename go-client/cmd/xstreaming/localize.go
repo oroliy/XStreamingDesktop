@@ -7,7 +7,8 @@ var chinese = map[string]string{
 	"Full screen": "全屏", "Exit full screen": "退出全屏", "Stop stream": "停止串流", "Disconnect and power off": "断开连接并关机", "Cancel sign-in": "取消登录",
 	"Press Xbox button": "短按 Xbox 按钮", "Hold Xbox button": "长按 Xbox 按钮",
 	"Video display": "画面显示", "Fit": "适应", "Crop": "裁剪填满", "Stretch": "拉伸",
-	"Open Microsoft sign-in page": "打开微软登录页面", "Enable keyboard controller": "启用键盘手柄", "Disable keyboard controller": "停用键盘手柄",
+	"Connection did not recover; please retry.": "连接未能恢复，请重试。",
+	"Open Microsoft sign-in page":               "打开微软登录页面", "Enable keyboard controller": "启用键盘手柄", "Disable keyboard controller": "停用键盘手柄",
 	"WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable": "WASD：左摇杆 · TFGH：右摇杆 · IJKL：面键 · 方向键：方向键 · Esc：退出",
 	"Sign-in expired; please sign in again.":                                              "登录信息已失效，请重新登录。", "Sign in with Microsoft": "使用微软账号登录", "Sign out": "退出登录", "Consoles": "主机", "Refresh consoles": "刷新主机", "Wake console": "唤醒主机", "Power off console": "关闭主机", "Start stream": "开始串流",
 	"Settings": "设置", "Cloud region": "云串流区域", "Resolution": "分辨率", "Language": "游戏语言", "Market": "目录市场", "Interface language": "界面语言", "Prefer IPv6 candidates": "优先使用 IPv6 候选地址", "Wake standby console before streaming": "串流前唤醒待机主机", "Starting volume": "启动音量", "Stick dead zone": "摇杆死区", "Controller polling rate": "手柄轮询频率",
@@ -19,6 +20,7 @@ var chinese = map[string]string{
 	"Loading cloud games…": "正在加载云游戏…", "Cloud games unavailable for this account or region.": "当前账号或地区无法使用云游戏。", "Invalid cloud service region.": "云服务区域无效。", "Unable to load cloud games.": "无法加载云游戏。", "Home streaming unavailable; checking cloud games.": "主机串流不可用，正在检查云游戏。", "System credential store unavailable; sign in manually.": "系统凭据库不可用，请手动登录。", "Unable to save renewed login; sign in may be required next time.": "无法保存更新的登录信息，下次可能需要重新登录。", "Unable to open browser; enter the address manually.": "无法打开浏览器，请手动输入地址。",
 }
 var chinesePrefixes = []struct{ en, zh string }{
+	{"Connection did not recover; remote session cleanup failed: ", "连接未能恢复，且远程会话清理失败："},
 	{"ffmpeg is required for streaming; install FFmpeg and add it to PATH: ", "串流需要 ffmpeg；请安装 FFmpeg 并加入 PATH："},
 	{"ffplay is required for streaming; install FFmpeg and add it to PATH: ", "串流需要 ffplay；请安装 FFmpeg 并加入 PATH："},
 	{"Unable to send text: ", "无法发送文本："}, {"Stream cleanup failed; console was not powered off: ", "串流清理失败，未关闭主机："}, {"Unable to connect to cloud games: ", "无法连接云游戏："}, {"Unable to load cloud games: ", "无法加载云游戏："}, {"Estimated queue wait: ", "预计排队时间（分钟）："}, {"Connection timed out; remote session cleanup failed: ", "连接超时，且远程会话清理失败："}, {"Stream stopped; remote session cleanup failed: ", "串流已停止，但远程会话清理失败："}, {"Connection failed; remote session cleanup failed: ", "连接失败，且远程会话清理失败："}, {"Sign-in failed: ", "登录失败："}, {"Stream failed: ", "串流启动失败："}, {"Stream error: ", "串流错误："}, {"Wake request failed; continuing stream: ", "唤醒请求失败，继续尝试串流："}, {"Power-off request failed: ", "关机请求失败："}, {"Wake request failed: ", "唤醒请求失败："}, {"Unable to refresh consoles: ", "无法刷新主机："}, {"Unable to save settings: ", "无法保存设置："}, {"Signed out locally; unable to remove saved login: ", "已在本次运行中退出，但无法删除已保存的登录信息："},

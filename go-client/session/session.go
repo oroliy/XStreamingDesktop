@@ -16,6 +16,7 @@ import (
 )
 
 var ErrConnectionTimeout = errors.New("timed out waiting for WebRTC connection")
+var ErrDisconnectTimeout = errors.New("WebRTC connection did not recover")
 
 // CleanupError reports a failure to stop a remote session after startup failed.
 type CleanupError struct{ Err error }
@@ -43,6 +44,7 @@ type Options struct {
 	OnConnectionState func(webrtc.PeerConnectionState)
 	PreferIPv6        bool
 	ConnectionTimeout time.Duration // zero defaults to 45 seconds after signaling
+	DisconnectTimeout time.Duration // zero defaults to 30 seconds after a connected session disconnects
 	SignalingTimeout  time.Duration // zero defaults to 60 seconds after provisioning
 }
 
@@ -85,7 +87,14 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 	}
 	connected := make(chan struct{})
 	var connectedOnce sync.Once
+	disconnectTimeout := opts.DisconnectTimeout
+	if disconnectTimeout <= 0 {
+		disconnectTimeout = 30 * time.Second
+	}
+	watch := &disconnectWatch{timeout: disconnectTimeout, cancel: cancel}
+	context.AfterFunc(live, watch.stop)
 	s.peer.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		watch.update(state)
 		if state == webrtc.PeerConnectionStateConnected {
 			connectedOnce.Do(func() { close(connected) })
 		}
@@ -154,6 +163,65 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 	}()
 	go func() { <-live.Done(); _ = s.Close() }()
 	return s, nil
+}
+
+// disconnectWatch allows transient outages to recover without keeping a dead
+// remote session alive indefinitely. Updates and timeout cancellation are serialized.
+type disconnectWatch struct {
+	mu        sync.Mutex
+	timeout   time.Duration
+	cancel    context.CancelCauseFunc
+	timer     *time.Timer
+	connected bool
+	stopped   bool
+	version   uint64
+}
+
+func (w *disconnectWatch) update(state webrtc.PeerConnectionState) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.stopped {
+		return
+	}
+	switch state {
+	case webrtc.PeerConnectionStateConnected:
+		w.connected = true
+		w.version++
+		if w.timer != nil {
+			w.timer.Stop()
+			w.timer = nil
+		}
+	case webrtc.PeerConnectionStateDisconnected:
+		if !w.connected || w.timer != nil {
+			return
+		}
+		w.version++
+		version := w.version
+		w.timer = time.AfterFunc(w.timeout, func() {
+			w.mu.Lock()
+			defer w.mu.Unlock()
+			if !w.stopped && w.version == version {
+				w.cancel(ErrDisconnectTimeout)
+			}
+		})
+	case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed:
+		w.stopLocked()
+	}
+}
+
+func (w *disconnectWatch) stop() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.stopLocked()
+}
+
+func (w *disconnectWatch) stopLocked() {
+	w.stopped = true
+	w.version++
+	if w.timer != nil {
+		w.timer.Stop()
+		w.timer = nil
+	}
 }
 
 // addRemoteCandidates tries every candidate; a bad path must not hide a usable one.

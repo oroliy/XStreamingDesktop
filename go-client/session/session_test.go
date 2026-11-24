@@ -397,6 +397,48 @@ func TestConnectionTimeoutAndCancellation(t *testing.T) {
 	}
 }
 
+func TestDisconnectWatchRecoveryAndTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	watch := &disconnectWatch{timeout: 40 * time.Millisecond, cancel: cancel}
+	defer watch.stop()
+	// The initial connection has its own timeout.
+	watch.update(webrtc.PeerConnectionStateDisconnected)
+	time.Sleep(60 * time.Millisecond)
+	if ctx.Err() != nil {
+		t.Fatal("initial disconnection ended the session")
+	}
+	watch.update(webrtc.PeerConnectionStateConnected)
+	watch.update(webrtc.PeerConnectionStateDisconnected)
+	watch.update(webrtc.PeerConnectionStateConnected)
+	time.Sleep(60 * time.Millisecond)
+	if ctx.Err() != nil {
+		t.Fatal("recovered connection ended the session")
+	}
+	watch.update(webrtc.PeerConnectionStateDisconnected)
+	select {
+	case <-ctx.Done():
+		if !errors.Is(context.Cause(ctx), ErrDisconnectTimeout) {
+			t.Fatal(context.Cause(ctx))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("persistent disconnection did not end the session")
+	}
+}
+
+func TestDisconnectWatchStopsTimer(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	watch := &disconnectWatch{timeout: 20 * time.Millisecond, cancel: cancel}
+	watch.update(webrtc.PeerConnectionStateConnected)
+	watch.update(webrtc.PeerConnectionStateDisconnected)
+	watch.stop()
+	time.Sleep(40 * time.Millisecond)
+	if ctx.Err() != nil {
+		t.Fatal("stopped watcher canceled session")
+	}
+}
+
 func TestConnectedSessionIsNotTimedOut(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)

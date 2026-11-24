@@ -15,6 +15,8 @@ The `streaming` package currently implements session creation, state polling, ke
 
 The `peer` package provides a Pion WebRTC peer with audio/video transceivers and Xbox data channels. Local tests negotiate a peer connection, send a data-channel message, and receive a video RTP packet. The `session` package connects service signaling to the peer and handles provisioning and cleanup; it is connected to the preview UI but has not been tested with an Xbox.
 
+After a connection is established, the client allows 30 seconds for a disconnected connection to recover. If it does not recover, the client ends the session and attempts remote cleanup; a cleanup failure is shown in the interface.
+
 The experimental `media` package can depacketize H.264 RTP and decode H.264 video frames using an `ffmpeg` executable on PATH. The preview UI uses this decoder; it uses software decoding and has not been benchmarked for streaming latency. Opus audio uses `ffplay` and an available audio device, with a small reorder buffer for late packets; audio/video synchronization and latency have not been validated.
 
 The preview reads up to four controllers through MyGo’s gamepad plugin. Linux requires permission to read the relevant `/dev/input` device. Polling-rate changes apply to the next stream; higher rates increase processing and network activity. Rumble is not yet supported.
