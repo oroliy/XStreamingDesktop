@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -78,15 +79,19 @@ func (p *Peer) StartControl(ctx context.Context, onError func(error)) {
 	control.OnOpen(func() { mu.Lock(); controlOpen = true; mu.Unlock(); start() })
 	message.OnOpen(func() { report(send(message, state.Handshake())) })
 	message.OnMessage(func(msg webrtc.DataChannelMessage) {
+		data := bytes.ReplaceAll(msg.Data, []byte{0}, nil)
 		var envelope protocol.Envelope
-		if err := json.Unmarshal(msg.Data, &envelope); err != nil {
+		if err := json.Unmarshal(data, &envelope); err != nil {
 			report(fmt.Errorf("message channel: %w", err))
 			return
 		}
 		if envelope.Type != "HandshakeAck" {
+			if reply := state.Incoming(envelope); reply != nil {
+				report(send(message, reply))
+			}
 			return
 		}
-		config, err := state.HandleHandshake(msg.Data)
+		config, err := state.HandleHandshake(data)
 		if err != nil {
 			report(err)
 			return

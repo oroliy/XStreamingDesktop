@@ -37,3 +37,25 @@ func TestControlMessages(t *testing.T) {
 		t.Fatal("invalid control message")
 	}
 }
+
+func TestIncomingReplies(t *testing.T) {
+	m := NewMessageChannel()
+	in := Envelope{Type: "TransactionStart", ID: "1", CV: "abcd.2", Target: "/unknown"}
+	out := m.Incoming(in)
+	if out == nil || out.Type != "Unhandled" || out.CV != "abcd.3" || out.Target != in.Target {
+		t.Fatal(out)
+	}
+	in.Target = "/streaming/touchcontrols/layout"
+	out = m.Incoming(in)
+	if out == nil || out.Type != "ReceiverCancel" || out.CV != "abcd.4" {
+		t.Fatal(out)
+	}
+	in.Type = "Message"
+	if m.Incoming(in) != nil {
+		t.Fatal("touch message should be ignored")
+	}
+	in.Type = "TransactionComplete"
+	if m.Incoming(in) != nil {
+		t.Fatal("unexpected response")
+	}
+}

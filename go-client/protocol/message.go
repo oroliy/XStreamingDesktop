@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -72,4 +74,36 @@ func GamepadChanged(index int, added bool) map[string]any {
 }
 func KeyframeRequest() map[string]any {
 	return map[string]any{"message": "videoKeyframeRequested", "ifrRequested": true}
+}
+
+// Incoming returns the protocol response for an unsupported service message.
+// Touch-control transactions are canceled because this client has no touch input.
+func (m *MessageChannel) Incoming(in Envelope) *Envelope {
+	if in.Type != "Message" && in.Type != "TransactionStart" {
+		return nil
+	}
+	if in.ID == "" || in.Target == "" {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	next := func(cv string) string {
+		if cv == "" {
+			return m.next()
+		}
+		parts := strings.Split(cv, ".")
+		last, err := strconv.ParseUint(parts[len(parts)-1], 10, 64)
+		if err != nil || last == math.MaxUint64 {
+			return cv + ".1"
+		}
+		parts[len(parts)-1] = strconv.FormatUint(last+1, 10)
+		return strings.Join(parts, ".")
+	}
+	if strings.HasPrefix(in.Target, "/streaming/touchcontrols") {
+		if in.Type == "Message" {
+			return nil
+		}
+		return &Envelope{Type: "ReceiverCancel", ID: in.ID, CV: next(next(in.CV))}
+	}
+	return &Envelope{Type: "Unhandled", ID: in.ID, Target: in.Target, CV: next(in.CV)}
 }
