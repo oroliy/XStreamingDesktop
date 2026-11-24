@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	appmedia "github.com/oroliy/XStreamingDesktop/go-client/media"
 	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -23,6 +26,22 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer remote.Close()
+	var audioTrack *webrtc.TrackLocalStaticRTP
+	audioReady := make(chan struct{}, 1)
+	audioDone := make(chan struct{})
+	audioErrors := make(chan error, 1)
+	if _, err := exec.LookPath("ffplay"); err == nil {
+		t.Setenv("SDL_AUDIODRIVER", "dummy")
+		audioTrack, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2}, "audio", "stream")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = remote.AddTrack(audioTrack); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		t.Log("ffplay unavailable; audio integration not exercised")
+	}
 	inputPackets := make(chan []byte, 4)
 	controlMessages := make(chan string, 4)
 	remote.OnDataChannel(func(dc *webrtc.DataChannel) {
@@ -116,7 +135,28 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	connected := make(chan struct{}, 1)
-	s, err := Start(ctx, client, Options{Play: streaming.PlayOptions{Target: "console"}, OnConnectionState: func(state webrtc.PeerConnectionState) {
+	s, err := Start(ctx, client, Options{Play: streaming.PlayOptions{Target: "console"}, OnTrack: func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		if track.Kind() != webrtc.RTPCodecTypeAudio {
+			return
+		}
+		defer close(audioDone)
+		player, err := appmedia.NewAudioPlayer(ctx, 2, 100)
+		if err != nil {
+			audioErrors <- err
+			return
+		}
+		defer player.Close()
+		packet, _, err := track.ReadRTP()
+		if err == nil {
+			err = player.WriteRTP(packet)
+		}
+		if err != nil {
+			audioErrors <- err
+			return
+		}
+		audioReady <- struct{}{}
+		_ = appmedia.ReceiveOpus(track, player)
+	}, OnConnectionState: func(state webrtc.PeerConnectionState) {
 		if state == webrtc.PeerConnectionStateConnected {
 			select {
 			case connected <- struct{}{}:
@@ -131,6 +171,27 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 	case <-connected:
 	case <-ctx.Done():
 		t.Fatal("connection state did not reach connected")
+	}
+	if audioTrack != nil {
+		audioReceived := false
+		for i := 0; i < 100 && !audioReceived; i++ {
+			packet := &rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: uint16(i), Timestamp: uint32(i * 960)}, Payload: []byte{0xf8, 0xff, 0xfe}}
+			if err := audioTrack.WriteRTP(packet); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-audioReady:
+				audioReceived = true
+			case err := <-audioErrors:
+				t.Fatal(err)
+			case <-ctx.Done():
+				t.Fatal("audio track did not start")
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+		if !audioReceived {
+			t.Fatal("audio packet did not reach player")
+		}
 	}
 	select {
 	case <-s.Ready():
@@ -182,6 +243,13 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 	}
 	if err = s.Close(); err != nil {
 		t.Fatal(err)
+	}
+	if audioTrack != nil {
+		select {
+		case <-audioDone:
+		case <-time.After(3 * time.Second):
+			t.Fatal("audio track did not stop")
+		}
 	}
 	if err = s.Close(); err != nil {
 		t.Fatal(err)
