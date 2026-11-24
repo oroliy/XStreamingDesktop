@@ -39,15 +39,19 @@ type oauthError struct {
 func (e *oauthError) Error() string { return "Microsoft OAuth: " + e.Code }
 
 type Client struct {
-	endpoint string
-	http     *http.Client
+	endpoint    string
+	http        *http.Client
+	transferURL string
 }
 
 func NewClient() *Client {
-	return &Client{endpoint: defaultEndpoint, http: &http.Client{Timeout: 15 * time.Second}}
+	return &Client{endpoint: defaultEndpoint, transferURL: "https://login.live.com/oauth20_token.srf", http: &http.Client{Timeout: 15 * time.Second}}
 }
 func (c *Client) post(ctx context.Context, path string, form url.Values, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint+path, strings.NewReader(form.Encode()))
+	return c.postURL(ctx, c.endpoint+path, form, out)
+}
+func (c *Client) postURL(ctx context.Context, endpoint string, form url.Values, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return err
 	}
@@ -126,6 +130,19 @@ func (c *Client) Refresh(ctx context.Context, refreshToken string) (Token, error
 	err := c.post(ctx, "/token", url.Values{"client_id": {ClientID}, "grant_type": {"refresh_token"}, "refresh_token": {refreshToken}, "scope": {"xboxlive.signin openid profile offline_access"}}, &token)
 	if err == nil && token.AccessToken == "" {
 		err = errors.New("missing access token")
+	}
+	return token, err
+}
+
+// TransferToken obtains the console transfer token used at ReadyToConnect.
+func (c *Client) TransferToken(ctx context.Context, refresh string) (Token, error) {
+	var token Token
+	if refresh == "" {
+		return token, errors.New("missing refresh token")
+	}
+	err := c.postURL(ctx, c.transferURL, url.Values{"client_id": {ClientID}, "grant_type": {"refresh_token"}, "refresh_token": {refresh}, "scope": {"service::http://Passport.NET/purpose::PURPOSE_XBOX_CLOUD_CONSOLE_TRANSFER_TOKEN"}}, &token)
+	if err == nil && token.AccessToken == "" {
+		err = errors.New("missing console transfer token")
 	}
 	return token, err
 }

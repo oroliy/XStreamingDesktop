@@ -53,3 +53,21 @@ func TestPollCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestTransferToken(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Error(err)
+		}
+		if r.Form.Get("refresh_token") != "refresh" || r.Form.Get("scope") != "service::http://Passport.NET/purpose::PURPOSE_XBOX_CLOUD_CONSOLE_TRANSFER_TOKEN" {
+			t.Error("bad transfer request")
+		}
+		w.Write([]byte(`{"access_token":"transfer"}`))
+	}))
+	defer s.Close()
+	c := &Client{transferURL: s.URL, http: s.Client()}
+	token, err := c.TransferToken(context.Background(), "refresh")
+	if err != nil || token.AccessToken != "transfer" {
+		t.Fatal(err)
+	}
+}
