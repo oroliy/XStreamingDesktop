@@ -42,6 +42,36 @@ type TokenStore interface {
 	Delete() error
 }
 
+// AttachStore configures storage without writing a token.
+func (s *Session) AttachStore(store TokenStore, onError func(error)) error {
+	_ = s.lock(context.Background())
+	defer s.unlock()
+	if s.closed {
+		return errors.New("session closed")
+	}
+	s.store = store
+	s.storeError = onError
+	return nil
+}
+
+// Persist saves the latest refresh token unless the session is closed or canceled.
+func (s *Session) Persist(ctx context.Context) error {
+	if err := s.lock(ctx); err != nil {
+		return err
+	}
+	defer s.unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.closed {
+		return errors.New("session closed")
+	}
+	if s.store == nil || s.refresh == "" {
+		return nil
+	}
+	return s.store.Save(s.refresh)
+}
+
 // SetStore saves the current token and persists future token rotation.
 func (s *Session) SetStore(store TokenStore, onError func(error)) error {
 	_ = s.lock(context.Background())

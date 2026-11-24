@@ -113,3 +113,47 @@ func TestWaitingForCredentialsCanBeCanceled(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestLateStorePersistsLatestToken(t *testing.T) {
+	s := NewSession("initial")
+	s.rotate("rotated-before-store")
+	store := &memoryStore{}
+	if err := s.SetStore(store, nil); err != nil || store.value != "rotated-before-store" {
+		t.Fatal(store.value, err)
+	}
+}
+
+func TestAttachedStoreLogoutBeforePersist(t *testing.T) {
+	s := NewSession("new")
+	store := &memoryStore{value: "previous"}
+	if err := s.AttachStore(store, nil); err != nil {
+		t.Fatal(err)
+	}
+	if store.value != "previous" {
+		t.Fatal("attach changed storage")
+	}
+	if err := s.Logout(); err != nil {
+		t.Fatal(err)
+	}
+	if store.value != "" {
+		t.Fatal("logout left saved credentials")
+	}
+	if err := s.Persist(context.Background()); err == nil {
+		t.Fatal("closed session persisted credentials")
+	}
+}
+func TestCanceledPersistKeepsPreviousCredential(t *testing.T) {
+	s := NewSession("new")
+	store := &memoryStore{value: "previous"}
+	if err := s.AttachStore(store, nil); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := s.Persist(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if store.value != "previous" {
+		t.Fatal("canceled save replaced previous credentials")
+	}
+}

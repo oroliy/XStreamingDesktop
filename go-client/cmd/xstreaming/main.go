@@ -331,9 +331,9 @@ func (a *app) signIn(ctx context.Context, prefs settings.Settings) {
 	if ctx.Err() != nil {
 		return
 	}
-	a.connectAccount(ctx, token.RefreshToken, prefs)
+	a.connectAccount(ctx, token.RefreshToken, prefs, false)
 }
-func (a *app) connectAccount(ctx context.Context, refresh string, prefs settings.Settings) {
+func (a *app) connectAccount(ctx context.Context, refresh string, prefs settings.Settings, restoring bool) {
 	a.update(func() {
 		if ctx.Err() == nil {
 			a.code = ""
@@ -345,13 +345,17 @@ func (a *app) connectAccount(ctx context.Context, refresh string, prefs settings
 		return
 	}
 	credentials := auth.NewSession(refresh)
-	persistErr := credentials.SetStore(secretStore{}, func(error) {
+	onStoreError := func(error) {
 		a.update(func() {
 			if ctx.Err() == nil {
 				a.status = "Unable to save renewed login; sign in may be required next time."
 			}
 		})
-	})
+	}
+	var persistErr error
+	if restoring {
+		persistErr = credentials.SetStore(secretStore{}, onStoreError)
+	}
 
 	client, consoles, homeErr := fetchHome(ctx, nil, func(ctx context.Context) (string, string, error) { return credentials.StreamingToken(ctx, "home") })
 	if ctx.Err() != nil {
@@ -374,8 +378,19 @@ func (a *app) connectAccount(ctx context.Context, refresh string, prefs settings
 		if persistErr != nil {
 			a.status += " Login could not be saved in the system credential store."
 		}
+		if !restoring {
+			if err := credentials.AttachStore(secretStore{}, onStoreError); err != nil {
+				onStoreError(err)
+			} else {
+				go func() {
+					if err := credentials.Persist(ctx); err != nil && ctx.Err() == nil {
+						onStoreError(err)
+					}
+				}()
+			}
+		}
+		go a.loadCloud(ctx, credentials, prefs)
 	})
-	go a.loadCloud(ctx, credentials, prefs)
 }
 
 // fetchHome uses the existing regional client, or acquires one on first use.
@@ -498,7 +513,7 @@ func (a *app) restore(ctx context.Context, prefs settings.Settings) {
 			a.status = "Restoring sign-in…"
 		}
 	})
-	a.connectAccount(ctx, string(token), prefs)
+	a.connectAccount(ctx, string(token), prefs, true)
 }
 func (a *app) wakeConsole(ctx context.Context, credentials *auth.Session, id string) {
 	token, err := credentials.WebToken(ctx)
