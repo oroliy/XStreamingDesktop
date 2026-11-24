@@ -57,6 +57,14 @@ func (p *Peer) StartControl(ctx context.Context, onError func(error)) {
 			case <-timer.C:
 			}
 			close(p.ready)
+			// Ask for a fresh frame as soon as the control handshake completes;
+			// otherwise startup can wait for the first periodic request.
+			if err := send(control, protocol.KeyframeRequest()); err != nil {
+				if ctx.Err() == nil {
+					report(err)
+				}
+				return
+			}
 			ticker := time.NewTicker(5 * time.Second)
 			defer ticker.Stop()
 			for {

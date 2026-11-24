@@ -88,4 +88,19 @@ func TestControlHandshake(t *testing.T) {
 			t.Fatal(ctx.Err())
 		}
 	}
+	select {
+	case <-p.Ready():
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	select {
+	case msg := <-got:
+		if msg != "videoKeyframeRequested" {
+			t.Fatalf("got %q, want initial keyframe request", msg)
+		}
+	case err := <-errors:
+		t.Fatal(err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("initial keyframe request did not follow handshake")
+	}
 }
