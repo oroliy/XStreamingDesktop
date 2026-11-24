@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"io"
 	"log"
 	"net/url"
 	"runtime"
@@ -70,6 +71,8 @@ type app struct {
 	streamPowerOff    *atomic.Bool
 	frame             *ui.Bitmap
 	decodedFPS        float64
+	videoMbps         float64
+	showPerformance   bool
 	cloudGeneration   atomic.Uint64
 	cloudCancel       context.CancelFunc
 	prefs             settings.Settings
@@ -110,9 +113,19 @@ func (a *app) view(c *ui.Context) {
 		ui.Text(c, a.tr("Experimental preview — controller and playback support are unverified."))
 		if a.frame != nil {
 			ui.Image(c, a.frame).FillWidth().Grow(1).Fit(videoFit(a.prefs.VideoFit))
-			ui.Text(c, fmt.Sprintf(a.tr("Decoded video: %.1f FPS"), a.decodedFPS))
+			if a.showPerformance {
+				ui.Text(c, fmt.Sprintf(a.tr("Decoded video: %.1f FPS"), a.decodedFPS))
+				ui.Text(c, fmt.Sprintf(a.tr("Video data: %.2f Mb/s"), a.videoMbps))
+			}
 		}
 		if a.streamCancel != nil {
+			performanceLabel := "Show performance"
+			if a.showPerformance {
+				performanceLabel = "Hide performance"
+			}
+			if ui.Button(c.Key("performance"), a.tr(performanceLabel)).Clicked() {
+				a.showPerformance = !a.showPerformance
+			}
 			if ui.Button(c.Key("hide-stream-controls"), a.tr("Hide controls")).Clicked() {
 				a.controlsHidden = true
 			}
@@ -937,6 +950,8 @@ func (a *app) stopStream(powerOff bool) {
 	a.busy = true
 	a.frame = nil
 	a.decodedFPS = 0
+	a.videoMbps = 0
+	a.showPerformance = false
 	a.wakeWarning = ""
 	a.keyboardEnabled = false
 	a.keyboard.Set(false, protocol.Gamepad{})
@@ -1034,6 +1049,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		}
 	}
 	var decodedFrames atomic.Uint64
+	var videoBytes atomic.Uint64
 	var frames frameMailbox
 	track := func(t *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		if t.Kind() == webrtc.RTPCodecTypeAudio {
@@ -1080,7 +1096,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 			onError(err)
 			return
 		}
-		readErr := media.ReceiveH264(t, decoder)
+		readErr := media.ReceiveH264(t, videoCountingWriter{dst: decoder, bytes: &videoBytes})
 		closeErr := decoder.Close()
 		if ctx.Err() == nil {
 			if closeErr != nil {
@@ -1201,7 +1217,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
-		lastTime, lastCount := time.Now(), decodedFrames.Load()
+		lastTime, lastCount, lastBytes := time.Now(), decodedFrames.Load(), videoBytes.Load()
 		for {
 			select {
 			case <-ctx.Done():
@@ -1210,8 +1226,10 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 				return
 			case now := <-ticker.C:
 				count := decodedFrames.Load()
+				bytes := videoBytes.Load()
 				fps := decodedFrameRate(lastCount, count, now.Sub(lastTime))
-				lastCount, lastTime = count, now
+				mbps := encodedVideoRate(lastBytes, bytes, now.Sub(lastTime))
+				lastCount, lastBytes, lastTime = count, bytes, now
 				a.update(func() {
 					if ctx.Err() != nil {
 						return
@@ -1222,6 +1240,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 					default:
 					}
 					a.decodedFPS = fps
+					a.videoMbps = mbps
 				})
 			}
 		}
@@ -1316,6 +1335,8 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		}
 		a.frame = nil
 		a.decodedFPS = 0
+		a.videoMbps = 0
+		a.showPerformance = false
 		a.streamConnected = false
 		a.inputReady = false
 		a.inputWarning = ""
@@ -1343,6 +1364,26 @@ func decodedFrameRate(previous, current uint64, elapsed time.Duration) float64 {
 		return 0
 	}
 	return float64(current-previous) / elapsed.Seconds()
+}
+
+type videoCountingWriter struct {
+	dst   io.Writer
+	bytes *atomic.Uint64
+}
+
+func (w videoCountingWriter) Write(p []byte) (int, error) {
+	n, err := w.dst.Write(p)
+	if n > 0 {
+		w.bytes.Add(uint64(n))
+	}
+	return n, err
+}
+
+func encodedVideoRate(previous, current uint64, elapsed time.Duration) float64 {
+	if current < previous || elapsed <= 0 {
+		return 0
+	}
+	return float64(current-previous) * 8 / elapsed.Seconds() / 1e6
 }
 
 // monitorControllerReady reports a delayed handshake without interrupting video.

@@ -7,6 +7,7 @@ var chinese = map[string]string{
 	"Full screen": "全屏", "Exit full screen": "退出全屏", "Stop stream": "停止串流", "Disconnect and power off": "断开连接并关机", "Cancel sign-in": "取消登录",
 	"Press Xbox button": "短按 Xbox 按钮", "Hold Xbox button": "长按 Xbox 按钮",
 	"Video display": "画面显示", "Fit": "适应", "Crop": "裁剪填满", "Stretch": "拉伸",
+	"Show performance": "显示性能数据", "Hide performance": "隐藏性能数据", "Video data: %.2f Mb/s": "视频数据：%.2f Mb/s",
 	"Hide controls": "收起控制栏", "Show controls": "显示控制栏",
 	"Enable microphone": "启用麦克风", "Disable microphone": "关闭麦克风", "Starting microphone…": "正在启动麦克风…", "Microphone on.": "麦克风已开启。", "Stopping microphone…": "正在关闭麦克风…",
 	"PulseAudio input name": "PulseAudio 输入设备名", "Save microphone input": "保存麦克风设备", "Microphone input saved.": "麦克风设备已保存。", "Invalid microphone input name.": "麦克风设备名无效。",

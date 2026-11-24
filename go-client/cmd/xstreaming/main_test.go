@@ -369,10 +369,57 @@ func TestDecodedFrameRate(t *testing.T) {
 	}
 	prefs := settings.Defaults()
 	prefs.UILanguage = "简体中文"
-	a := &app{prefs: prefs, frame: ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 1, 1))), decodedFPS: 59.5}
+	a := &app{prefs: prefs, frame: ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 1, 1))), decodedFPS: 59.5, videoMbps: 8.25, showPerformance: true}
 	tt := ui.NewTester(a.view, 1024, 768)
 	if !tt.HasText("视频解码：59.5 帧/秒") {
 		t.Fatal(tt.Texts())
+	}
+	if !tt.HasText("视频数据：8.25 Mb/s") {
+		t.Fatal(tt.Texts())
+	}
+}
+
+type partialVideoWriter struct{ err error }
+
+func (w partialVideoWriter) Write([]byte) (int, error) { return 2, w.err }
+
+func TestEncodedVideoRateAndCounting(t *testing.T) {
+	if got := encodedVideoRate(100, 1000100, time.Second); got != 8 {
+		t.Fatalf("got %v Mb/s", got)
+	}
+	if encodedVideoRate(2, 1, time.Second) != 0 || encodedVideoRate(0, 1, 0) != 0 {
+		t.Fatal("invalid interval produced a rate")
+	}
+	failure := errors.New("decoder failed")
+	var count atomic.Uint64
+	w := videoCountingWriter{dst: partialVideoWriter{err: failure}, bytes: &count}
+	n, err := w.Write([]byte{1, 2, 3})
+	if n != 2 || !errors.Is(err, failure) || count.Load() != 2 {
+		t.Fatalf("n=%d err=%v count=%d", n, err, count.Load())
+	}
+}
+
+func TestPerformanceControls(t *testing.T) {
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := &app{prefs: settings.Defaults(), streamCancel: cancel, frame: ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 1, 1)))}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if tt.HasText("Decoded video: 0.0 FPS") {
+		t.Fatal("performance shown before it was enabled")
+	}
+	if err := tt.Click("Show performance"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Decoded video: 0.0 FPS") || !tt.HasText("Video data: 0.00 Mb/s") {
+		t.Fatal(tt.Texts())
+	}
+	if err := tt.Click("Hide performance"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tt.HasText("Decoded video: 0.0 FPS") {
+		t.Fatal("performance remained visible")
 	}
 }
 
