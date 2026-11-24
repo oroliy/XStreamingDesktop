@@ -13,6 +13,7 @@ import (
 	"github.com/pion/webrtc/v4"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"strings"
 	"sync/atomic"
@@ -40,6 +41,9 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 			t.Fatal(err)
 		}
 	} else {
+		if os.Getenv("XSTREAMING_REQUIRE_MEDIA_TESTS") == "1" {
+			t.Fatalf("ffplay unavailable: %v", err)
+		}
 		t.Log("ffplay unavailable; audio integration not exercised")
 	}
 	inputPackets := make(chan []byte, 4)

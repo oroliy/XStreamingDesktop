@@ -15,7 +15,7 @@ import (
 
 func TestAudioPlayer(t *testing.T) {
 	if _, err := exec.LookPath("ffplay"); err != nil {
-		t.Skip("ffplay unavailable")
+		mediaTestUnavailable(t, "ffplay unavailable: %v", err)
 	}
 	t.Setenv("SDL_AUDIODRIVER", "dummy")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -18,13 +18,13 @@ import (
 
 func TestVideoDecoder(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg unavailable")
+		mediaTestUnavailable(t, "ffmpeg unavailable: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	encoded, err := exec.CommandContext(ctx, "ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=32x32:r=10:d=1", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-f", "h264", "pipe:1").Output()
 	if err != nil {
-		t.Skipf("H.264 encoder unavailable: %v", err)
+		mediaTestUnavailable(t, "H.264 encoder unavailable: %v", err)
 	}
 	frames := make(chan image.Image, 20)
 	decoder, err := NewVideoDecoder(ctx, func(frame image.Image) { frames <- frame })
@@ -49,13 +49,13 @@ func TestVideoDecoder(t *testing.T) {
 // The decoder must emit frames while the input remains open for a live stream.
 func TestVideoDecoderStreamsBeforeEOF(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg unavailable")
+		mediaTestUnavailable(t, "ffmpeg unavailable: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	encoded, err := exec.CommandContext(ctx, "ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=s=128x128:r=30:d=1", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", "30", "-f", "h264", "pipe:1").Output()
 	if err != nil {
-		t.Skipf("H.264 encoder unavailable: %v", err)
+		mediaTestUnavailable(t, "H.264 encoder unavailable: %v", err)
 	}
 	frames := make(chan struct{}, 1)
 	decoder, err := NewVideoDecoder(ctx, func(image.Image) {
@@ -84,6 +84,14 @@ func TestVideoDecoderStreamsBeforeEOF(t *testing.T) {
 	cancel()
 	<-writerDone
 	_ = decoder.Close()
+}
+
+func mediaTestUnavailable(t *testing.T, format string, args ...any) {
+	t.Helper()
+	if os.Getenv("XSTREAMING_REQUIRE_MEDIA_TESTS") == "1" {
+		t.Fatalf(format, args...)
+	}
+	t.Skipf(format, args...)
 }
 
 // A broken decoder that continues writing must not make Close hang after a bad frame.

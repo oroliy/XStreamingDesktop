@@ -7,6 +7,7 @@ import (
 	"image"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"testing"
 	"time"
@@ -20,13 +21,13 @@ import (
 // Exercises signaling, real local WebRTC packets, H.264 depacketization and decoding.
 func TestVideoThroughSession(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg unavailable")
+		mediaTestUnavailable(t, "ffmpeg unavailable: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	video, err := exec.CommandContext(ctx, "ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=s=128x128:r=15:d=1", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-f", "h264", "pipe:1").Output()
 	if err != nil {
-		t.Skipf("H.264 encoder unavailable: %v", err)
+		mediaTestUnavailable(t, "H.264 encoder unavailable: %v", err)
 	}
 	remote, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
@@ -156,4 +157,12 @@ func TestVideoThroughSession(t *testing.T) {
 	cancel()
 	_ = s.Close()
 	t.Fatal("no decoded frame")
+}
+
+func mediaTestUnavailable(t *testing.T, format string, args ...any) {
+	t.Helper()
+	if os.Getenv("XSTREAMING_REQUIRE_MEDIA_TESTS") == "1" {
+		t.Fatalf(format, args...)
+	}
+	t.Skipf(format, args...)
 }
