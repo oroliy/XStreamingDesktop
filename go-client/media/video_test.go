@@ -127,6 +127,29 @@ func TestVideoDecoderStopsAfterInvalidFrame(t *testing.T) {
 	}
 }
 
+func TestVideoDecoderStopsWhenProcessIgnoresEOF(t *testing.T) {
+	if os.Getenv("XSTREAMING_STUCK_DECODER") == "1" {
+		time.Sleep(time.Minute)
+		os.Exit(0)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestVideoDecoderStopsWhenProcessIgnoresEOF$")
+	cmd.Env = append(os.Environ(), "XSTREAMING_STUCK_DECODER=1")
+	decoder, err := newVideoDecoder(cmd, func(image.Image) { t.Error("unexpected frame") })
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoder.closeTimeout = 50 * time.Millisecond
+	err = decoder.Close()
+	if err == nil || !strings.Contains(err.Error(), "video decoder did not exit") {
+		t.Fatalf("expected decoder timeout, got %v", err)
+	}
+	if err2 := decoder.Close(); err2 == nil || err2.Error() != err.Error() {
+		t.Fatalf("repeat Close returned %v, first returned %v", err2, err)
+	}
+}
+
 type packetReader struct {
 	packets []*rtp.Packet
 	err     error

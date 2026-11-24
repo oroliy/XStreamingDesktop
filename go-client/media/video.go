@@ -10,6 +10,7 @@ import (
 	"io"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/pion/interceptor"
 	"github.com/pion/rtp"
@@ -21,12 +22,13 @@ import (
 // VideoDecoder decodes an Annex B H.264 stream with an installed ffmpeg.
 // Frames are delivered serially on a decoder goroutine; callbacks must return promptly.
 type VideoDecoder struct {
-	cmd   *exec.Cmd
-	input io.WriteCloser
-	done  chan struct{}
-	mu    sync.Mutex
-	err   error
-	once  sync.Once
+	cmd          *exec.Cmd
+	input        io.WriteCloser
+	done         chan struct{}
+	mu           sync.Mutex
+	err          error
+	once         sync.Once
+	closeTimeout time.Duration
 }
 
 func NewVideoDecoder(ctx context.Context, onFrame func(image.Image)) (*VideoDecoder, error) {
@@ -52,7 +54,7 @@ func newVideoDecoder(cmd *exec.Cmd, onFrame func(image.Image)) (*VideoDecoder, e
 	if err = cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start ffmpeg: %w", err)
 	}
-	d := &VideoDecoder{cmd: cmd, input: stdin, done: make(chan struct{})}
+	d := &VideoDecoder{cmd: cmd, input: stdin, done: make(chan struct{}), closeTimeout: 10 * time.Second}
 	go func() {
 		defer close(d.done)
 		reader := bufio.NewReaderSize(stdout, 64<<10)
@@ -89,7 +91,25 @@ func (d *VideoDecoder) Write(b []byte) (int, error) { return d.input.Write(b) }
 
 // Close signals end of input and waits for all decoded frames.
 func (d *VideoDecoder) Close() error {
-	d.once.Do(func() { _ = d.input.Close(); <-d.done })
+	d.once.Do(func() {
+		_ = d.input.Close()
+		timer := time.NewTimer(d.closeTimeout)
+		defer timer.Stop()
+		select {
+		case <-d.done:
+		case <-timer.C:
+			// Give an already-exited process precedence at the deadline.
+			select {
+			case <-d.done:
+			default:
+				_ = d.cmd.Process.Kill()
+				<-d.done
+				d.mu.Lock()
+				d.err = errors.Join(d.err, errors.New("video decoder did not exit after input closed"))
+				d.mu.Unlock()
+			}
+		}
+	})
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.err
