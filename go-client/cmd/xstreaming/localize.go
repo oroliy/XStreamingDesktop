@@ -6,6 +6,7 @@ var chinese = map[string]string{
 	"Experimental preview — controller and playback support are unverified.": "实验预览版：手柄和播放功能尚未经实机验证。",
 	"Full screen": "全屏", "Exit full screen": "退出全屏", "Stop stream": "停止串流", "Disconnect and power off": "断开连接并关机", "Cancel sign-in": "取消登录",
 	"Press Xbox button": "短按 Xbox 按钮", "Hold Xbox button": "长按 Xbox 按钮",
+	"Video display": "画面显示", "Fit": "适应", "Crop": "裁剪填满", "Stretch": "拉伸",
 	"Open Microsoft sign-in page": "打开微软登录页面", "Enable keyboard controller": "启用键盘手柄", "Disable keyboard controller": "停用键盘手柄",
 	"WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable": "WASD：左摇杆 · TFGH：右摇杆 · IJKL：面键 · 方向键：方向键 · Esc：退出",
 	"Sign-in expired; please sign in again.":                                              "登录信息已失效，请重新登录。", "Sign in with Microsoft": "使用微软账号登录", "Sign out": "退出登录", "Consoles": "主机", "Refresh consoles": "刷新主机", "Wake console": "唤醒主机", "Power off console": "关闭主机", "Start stream": "开始串流",

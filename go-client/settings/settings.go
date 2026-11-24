@@ -18,6 +18,7 @@ type Settings struct {
 	Language         string  `json:"language"`
 	Market           string  `json:"market"`
 	CloudRegion      string  `json:"cloud_region"`
+	VideoFit         string  `json:"video_fit"`
 	Volume           float64 `json:"volume"`
 	StickDeadzone    float64 `json:"stick_deadzone"`
 	PollingRate      string  `json:"polling_rate"`
@@ -36,9 +37,12 @@ func CatalogMarkets() []string {
 }
 
 func Defaults() Settings {
-	return Settings{Resolution: "1080p", UILanguage: "English", Language: "en-US", Market: "US", CloudRegion: "Automatic", Volume: 100, StickDeadzone: 10, PollingRate: "60 Hz"}
+	return Settings{Resolution: "1080p", UILanguage: "English", Language: "en-US", Market: "US", CloudRegion: "Automatic", VideoFit: "Fit", Volume: 100, StickDeadzone: 10, PollingRate: "60 Hz"}
 }
 func (s Settings) Validate() error {
+	if s.VideoFit != "Fit" && s.VideoFit != "Crop" && s.VideoFit != "Stretch" {
+		return errors.New("invalid video fit")
+	}
 	if s.UILanguage != "English" && s.UILanguage != "简体中文" {
 		return errors.New("invalid interface language")
 	}

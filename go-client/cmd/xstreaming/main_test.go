@@ -470,6 +470,31 @@ func TestXboxButtonControls(t *testing.T) {
 	}
 }
 
+func TestVideoDisplaySetting(t *testing.T) {
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	path := filepath.Join(t.TempDir(), "settings.json")
+	a := &app{prefs: settings.Defaults(), settingsPath: path, streamCancel: cancel}
+	tt := ui.NewTester(a.view, 1024, 768)
+	for _, item := range []struct {
+		label string
+		next  string
+		fit   ui.Fit
+	}{{"Fit", "Crop", ui.Cover}, {"Crop", "Stretch", ui.FillBox}, {"Stretch", "Fit", ui.Contain}} {
+		if err := tt.Click(item.label); err != nil {
+			t.Fatal(err)
+		}
+		if a.prefs.VideoFit != item.next || videoFit(a.prefs.VideoFit) != item.fit {
+			t.Fatalf("setting after %s: %s", item.label, a.prefs.VideoFit)
+		}
+		saved, err := settings.Load(path)
+		if err != nil || saved.VideoFit != item.next {
+			t.Fatalf("saved=%v err=%v", saved.VideoFit, err)
+		}
+		tt.Frame()
+	}
+}
+
 func TestPowerOffRunsOnlyAfterSuccessfulCleanup(t *testing.T) {
 	done := make(chan error, 1)
 	called := make(chan struct{}, 1)

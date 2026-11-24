@@ -17,6 +17,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 	s.Language = "zh-TW"
 	s.StickDeadzone = 25
 	s.PollingRate = "250 Hz"
+	s.VideoFit = "Crop"
 	if err = Save(p, s); err != nil {
 		t.Fatal(err)
 	}
@@ -36,12 +37,26 @@ func TestLegacySettingsGainDefaultVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := Load(p)
-	if err != nil || got.Volume != 100 || got.StickDeadzone != 10 || got.PollingRate != "60 Hz" || got.ResolutionCode() != 720 || got.UILanguage != "English" {
+	if err != nil || got.Volume != 100 || got.StickDeadzone != 10 || got.PollingRate != "60 Hz" || got.ResolutionCode() != 720 || got.UILanguage != "English" || got.VideoFit != "Fit" {
 		t.Fatal(got, err)
 	}
 	got.Volume = 101
 	if err = got.Validate(); err == nil {
 		t.Fatal("accepted invalid volume")
+	}
+}
+
+func TestVideoFitValidation(t *testing.T) {
+	s := Defaults()
+	for _, mode := range []string{"Fit", "Crop", "Stretch"} {
+		s.VideoFit = mode
+		if err := s.Validate(); err != nil {
+			t.Fatalf("%s: %v", mode, err)
+		}
+	}
+	s.VideoFit = "unknown"
+	if s.Validate() == nil {
+		t.Fatal("accepted invalid video fit")
 	}
 }
 

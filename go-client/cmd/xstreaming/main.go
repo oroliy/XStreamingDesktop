@@ -73,10 +73,29 @@ func (a *app) view(c *ui.Context) {
 		ui.Text(c, "XStreaming").FontSize(32).Bold()
 		ui.Text(c, a.tr("Experimental preview — controller and playback support are unverified."))
 		if a.frame != nil {
-			ui.Image(c, a.frame).FillWidth().Grow(1).Fit(ui.Contain)
+			ui.Image(c, a.frame).FillWidth().Grow(1).Fit(videoFit(a.prefs.VideoFit))
 			ui.Text(c, fmt.Sprintf(a.tr("Decoded video: %.1f FPS"), a.decodedFPS))
 		}
 		if a.streamCancel != nil {
+			ui.Row(c).Gap(8).Children(func() {
+				ui.Text(c, a.tr("Video display"))
+				label := a.tr(a.prefs.VideoFit)
+				if ui.Button(c.Key("video-fit"), label).Clicked() {
+					switch a.prefs.VideoFit {
+					case "Fit":
+						a.prefs.VideoFit = "Crop"
+					case "Crop":
+						a.prefs.VideoFit = "Stretch"
+					default:
+						a.prefs.VideoFit = "Fit"
+					}
+					if a.settingsPath != "" {
+						if err := settings.Save(a.settingsPath, a.prefs); err != nil {
+							a.status = "Unable to save settings: " + err.Error()
+						}
+					}
+				}
+			})
 			label := "Full screen"
 			if a.fullscreen {
 				label = "Exit full screen"
@@ -367,6 +386,17 @@ func (a *app) view(c *ui.Context) {
 			}
 		})
 	})
+}
+
+func videoFit(mode string) ui.Fit {
+	switch mode {
+	case "Crop":
+		return ui.Cover
+	case "Stretch":
+		return ui.FillBox
+	default:
+		return ui.Contain
+	}
 }
 
 // verificationURLAllowed prevents opening non-HTTPS or unrelated URLs received from a service.
