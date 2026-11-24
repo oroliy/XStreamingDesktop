@@ -2,9 +2,11 @@ package session
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
 	"github.com/pion/webrtc/v4"
 	"net/http"
@@ -21,6 +23,38 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer remote.Close()
+	inputPackets := make(chan []byte, 4)
+	controlMessages := make(chan string, 4)
+	remote.OnDataChannel(func(dc *webrtc.DataChannel) {
+		dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+			switch dc.Label() {
+			case "message":
+				var body struct {
+					Type string `json:"type"`
+				}
+				if json.Unmarshal(msg.Data, &body) == nil && body.Type == "Handshake" {
+					if err := dc.SendText(`{"type":"HandshakeAck","version":"messageV1"}`); err != nil {
+						t.Error(err)
+					}
+				}
+			case "control":
+				var body struct {
+					Message string `json:"message"`
+				}
+				if json.Unmarshal(msg.Data, &body) == nil {
+					select {
+					case controlMessages <- body.Message:
+					default:
+					}
+				}
+			case "input":
+				select {
+				case inputPackets <- append([]byte(nil), msg.Data...):
+				default:
+				}
+			}
+		})
+	})
 	var answer string
 	var stopped atomic.Int32
 	stoppedSignal := make(chan struct{}, 1)
@@ -97,6 +131,48 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 	case <-connected:
 	case <-ctx.Done():
 		t.Fatal("connection state did not reach connected")
+	}
+	select {
+	case <-s.Ready():
+	case <-ctx.Done():
+		t.Fatal("control handshake did not complete")
+	}
+	for _, want := range []string{"authorizationRequest", "gamepadChanged"} {
+		select {
+		case got := <-controlMessages:
+			if got != want {
+				t.Fatalf("control message %q, want %q", got, want)
+			}
+		case <-ctx.Done():
+			t.Fatal("missing control message")
+		}
+	}
+	sender := s.Input()
+	for s.InputChannel().ReadyState() != webrtc.DataChannelStateOpen {
+		select {
+		case <-ctx.Done():
+			t.Fatal("input channel did not open")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	if err := sender.Init(0); err != nil {
+		t.Fatal(err)
+	}
+	if err := sender.SendGamepads([]protocol.Gamepad{{Buttons: protocol.A, LeftX: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, reportType := range []uint16{8, 2} {
+		select {
+		case packet := <-inputPackets:
+			if len(packet) < 15 || binary.LittleEndian.Uint16(packet) != reportType {
+				t.Fatalf("unexpected input report %x", packet)
+			}
+			if reportType == 2 && (len(packet) != 38 || binary.LittleEndian.Uint16(packet[16:]) != uint16(protocol.A)) {
+				t.Fatalf("invalid gamepad report %x", packet)
+			}
+		case <-ctx.Done():
+			t.Fatal("missing input report")
+		}
 	}
 	cancel()
 	select {
