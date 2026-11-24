@@ -1,3 +1,5 @@
+> For the MyGo + Go rewrite preview, see the [Go client guide](./go-client/README.md). This version is still under development and validation.
+
 <p align="center">
   <a href="https://github.com/Geocld/XStreaming">
     <img src="https://raw.githubusercontent.com/Geocld/XStreaming/main/images/logo.png" width="546">
