@@ -16,7 +16,7 @@ import (
 )
 
 type testMicrophoneSession struct {
-	start func(context.Context) (*webrtc.TrackLocalStaticSample, error)
+	start func(context.Context) (microphoneWriter, error)
 	stops int
 }
 
@@ -59,7 +59,7 @@ func TestMicrophoneStopButtonCancelsCapture(t *testing.T) {
 	}
 }
 
-func (s *testMicrophoneSession) StartMicrophone(ctx context.Context) (*webrtc.TrackLocalStaticSample, error) {
+func (s *testMicrophoneSession) StartMicrophone(ctx context.Context) (microphoneWriter, error) {
 	return s.start(ctx)
 }
 func (s *testMicrophoneSession) StopMicrophone() error { s.stops++; return nil }
@@ -76,7 +76,7 @@ func testMicrophoneTrack(t *testing.T) *webrtc.TrackLocalStaticSample {
 func TestMicrophoneCaptureStopsAndDetaches(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s := &testMicrophoneSession{start: func(context.Context) (*webrtc.TrackLocalStaticSample, error) { return testMicrophoneTrack(t), nil }}
+	s := &testMicrophoneSession{start: func(context.Context) (microphoneWriter, error) { return testMicrophoneTrack(t), nil }}
 	active := 0
 	err, stopErr := runMicrophone(ctx, ctx, s, func(ctx context.Context, args []string, send func(pionmedia.Sample) error) error {
 		if !reflect.DeepEqual(args, []string{"-f", "pulse", "-i", "default"}) {
@@ -99,7 +99,7 @@ func TestCancelDuringMicrophoneNegotiationSkipsCapture(t *testing.T) {
 	micCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	track := testMicrophoneTrack(t)
-	s := &testMicrophoneSession{start: func(context.Context) (*webrtc.TrackLocalStaticSample, error) {
+	s := &testMicrophoneSession{start: func(context.Context) (microphoneWriter, error) {
 		cancel()
 		return track, nil
 	}}

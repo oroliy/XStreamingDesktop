@@ -322,13 +322,52 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 	if err = remoteMic.SetReadDeadline(time.Now().Add(200 * time.Millisecond)); err != nil {
 		t.Fatal(err)
 	}
-	if err = mic.WriteSample(pionmedia.Sample{Data: []byte{0xf8, 0xff, 0xfe}, Duration: 20 * time.Millisecond}); err != nil {
-		t.Fatal(err)
+	if err = mic.WriteSample(pionmedia.Sample{Data: []byte{0xf8, 0xff, 0xfe}, Duration: 20 * time.Millisecond}); err == nil {
+		t.Fatal("stopped microphone accepted a sample")
 	}
 	if _, _, err = remoteMic.ReadRTP(); err == nil {
 		t.Fatal("microphone sent data after stop")
 	} else if timeout, ok := err.(net.Error); !ok || !timeout.Timeout() {
 		t.Fatalf("unexpected read error after stop: %v", err)
+	}
+	secondMic, err := s.StartMicrophone(ctx)
+	if err != nil {
+		t.Fatalf("restart microphone: %v", err)
+	}
+	if chatOffers.Load() != 2 {
+		t.Fatalf("restart did not renegotiate: %d offers", chatOffers.Load())
+	}
+	if err := mic.WriteSample(pionmedia.Sample{Data: []byte{0xf8, 0xff, 0xfe}, Duration: 20 * time.Millisecond}); err == nil {
+		t.Fatal("previous microphone handle became active again")
+	}
+	if err := remoteMic.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := secondMic.WriteSample(pionmedia.Sample{Data: []byte{0xf8, 0xff, 0xfe}, Duration: 20 * time.Millisecond}); err != nil {
+		t.Fatal(err)
+	}
+	readOld := make(chan error, 1)
+	go func() {
+		packet, _, err := remoteMic.ReadRTP()
+		if err == nil && !bytes.Equal(packet.Payload, []byte{0xf8, 0xff, 0xfe}) {
+			err = fmt.Errorf("unexpected restarted packet: %x", packet.Payload)
+		}
+		readOld <- err
+	}()
+	select {
+	case packet := <-microphonePackets:
+		if !bytes.Equal(packet.payload, []byte{0xf8, 0xff, 0xfe}) {
+			t.Fatalf("unexpected new track packet: %x", packet.payload)
+		}
+	case err := <-readOld:
+		if err != nil {
+			t.Fatalf("restarted microphone did not send: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("restarted microphone timed out")
+	}
+	if err := s.StopMicrophone(); err != nil {
+		t.Fatal(err)
 	}
 	failChat.Store(true)
 	if _, err = s.StartMicrophone(ctx); err == nil {

@@ -25,16 +25,18 @@ func (e *CleanupError) Error() string { return "stop remote session: " + e.Err.E
 func (e *CleanupError) Unwrap() error { return e.Err }
 
 type Session struct {
-	client   *streaming.Client
-	peer     *peer.Peer
-	id       string
-	cancel   context.CancelCauseFunc
-	live     context.Context
-	done     <-chan struct{}
-	once     sync.Once
-	closeErr error
-	micMu    sync.Mutex
-	micOn    bool
+	client        *streaming.Client
+	peer          *peer.Peer
+	id            string
+	cancel        context.CancelCauseFunc
+	live          context.Context
+	done          <-chan struct{}
+	once          sync.Once
+	closeErr      error
+	micMu         sync.Mutex
+	micOn         bool
+	micTrack      *webrtc.TrackLocalStaticSample
+	micGeneration uint64
 }
 type Options struct {
 	Play              streaming.PlayOptions

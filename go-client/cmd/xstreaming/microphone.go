@@ -7,13 +7,22 @@ import (
 
 	"github.com/oroliy/XStreamingDesktop/go-client/media"
 	"github.com/oroliy/XStreamingDesktop/go-client/session"
-	"github.com/pion/webrtc/v4"
 	pionmedia "github.com/pion/webrtc/v4/pkg/media"
 )
 
+type microphoneWriter interface {
+	WriteSample(pionmedia.Sample) error
+}
+
 type microphoneSession interface {
-	StartMicrophone(context.Context) (*webrtc.TrackLocalStaticSample, error)
+	StartMicrophone(context.Context) (microphoneWriter, error)
 	StopMicrophone() error
+}
+
+type liveMicrophoneSession struct{ *session.Session }
+
+func (s liveMicrophoneSession) StartMicrophone(ctx context.Context) (microphoneWriter, error) {
+	return s.Session.StartMicrophone(ctx)
 }
 
 type microphoneEncoder func(context.Context, []string, func(pionmedia.Sample) error) error
@@ -77,7 +86,7 @@ func (a *app) captureMicrophone(streamCtx, micCtx context.Context, cancel contex
 		}
 	}()
 	defer close(finished)
-	err, stopErr := runMicrophone(streamCtx, micCtx, s, media.EncodeMicrophone, func() {
+	err, stopErr := runMicrophone(streamCtx, micCtx, liveMicrophoneSession{s}, media.EncodeMicrophone, func() {
 		a.update(func() {
 			if a.micCtx == micCtx && micCtx.Err() == nil {
 				a.micStatus = "Microphone on."
