@@ -4,12 +4,18 @@ package main
 import (
 	"context"
 	"fmt"
+	"image"
 	"log"
+	"strings"
+	"sync/atomic"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/oroliy/XStreamingDesktop/go-client/auth"
+	"github.com/oroliy/XStreamingDesktop/go-client/media"
+	"github.com/oroliy/XStreamingDesktop/go-client/session"
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
+	"github.com/pion/webrtc/v4"
 )
 
 type app struct {
@@ -19,12 +25,29 @@ type app struct {
 	busy              bool
 	status, code, uri string
 	consoles          []streaming.Console
+	client            *streaming.Client
+	refresh           string
+	streamCancel      context.CancelFunc
+	frame             *ui.Bitmap
+	framePending      atomic.Bool
 }
 
 func (a *app) view(c *ui.Context) {
 	ui.Column(c).Fill().Center().Gap(12).Children(func() {
 		ui.Text(c, "XStreaming").FontSize(32).Bold()
-		ui.Text(c, "Go preview — streaming playback is not available yet.")
+		ui.Text(c, "Experimental preview — audio and controller support are not available.")
+		if a.frame != nil {
+			ui.Image(c, a.frame).Width(640).Height(360).Fit(ui.Contain)
+		}
+		if a.streamCancel != nil {
+			if ui.Button(c.Key("stop"), "Stop stream").Clicked() {
+				a.streamCancel()
+				a.streamCancel = nil
+				a.busy = true
+				a.frame = nil
+				a.status = "Stopping stream…"
+			}
+		}
 		if a.status != "" {
 			ui.Text(c, a.status)
 		}
@@ -32,7 +55,7 @@ func (a *app) view(c *ui.Context) {
 			ui.Text(c, "Visit: "+a.uri)
 			ui.Text(c, "Code: "+a.code).FontSize(24).Bold()
 		}
-		if !a.busy && a.code == "" {
+		if !a.busy && a.code == "" && a.client == nil {
 			if ui.PrimaryButton(c, "Sign in with Microsoft").Clicked() {
 				a.busy = true
 				a.status = "Requesting sign-in code…"
@@ -41,6 +64,15 @@ func (a *app) view(c *ui.Context) {
 		}
 		for _, console := range a.consoles {
 			ui.Text(c, fmt.Sprintf("%s (%s) — %s", console.Name, console.ConsoleType, console.PowerState))
+			if !a.busy && a.streamCancel == nil && console.ServerID != "" {
+				if ui.Button(c.Key(console.ServerID), "Start stream").Clicked() {
+					ctx, cancel := context.WithCancel(a.ctx)
+					a.streamCancel = cancel
+					a.busy = true
+					a.status = "Starting stream…"
+					go a.startStream(ctx, a.client, a.refresh, console.ServerID)
+				}
+			}
 		}
 	})
 }
@@ -99,8 +131,88 @@ func (a *app) signIn() {
 	}
 	a.update(func() {
 		a.busy = false
+		a.client = client
+		a.refresh = token.RefreshToken
 		a.consoles = consoles
 		a.status = fmt.Sprintf("Signed in. Found %d console(s).", len(consoles))
+	})
+}
+func (a *app) startStream(ctx context.Context, client *streaming.Client, refresh, target string) {
+	onError := func(err error) {
+		if ctx.Err() == nil {
+			a.update(func() {
+				if ctx.Err() == nil {
+					a.status = "Stream error: " + err.Error()
+				}
+			})
+		}
+	}
+	track := func(t *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		if t.Kind() == webrtc.RTPCodecTypeAudio {
+			for {
+				if _, _, err := t.ReadRTP(); err != nil {
+					return
+				}
+			}
+		}
+		if !strings.EqualFold(t.Codec().MimeType, webrtc.MimeTypeH264) {
+			onError(fmt.Errorf("unsupported media codec: %s", t.Codec().MimeType))
+			return
+		}
+		decoder, err := media.NewVideoDecoder(ctx, func(img image.Image) {
+			if ctx.Err() != nil || !a.framePending.CompareAndSwap(false, true) {
+				return
+			}
+			a.update(func() {
+				defer a.framePending.Store(false)
+				if ctx.Err() != nil {
+					return
+				}
+				if a.frame == nil {
+					a.frame = ui.NewBitmap(img)
+				} else {
+					a.frame.Update(img)
+				}
+			})
+		})
+		if err != nil {
+			onError(err)
+			return
+		}
+		defer decoder.Close()
+		if err = media.ReceiveH264(t, decoder); err != nil && ctx.Err() == nil {
+			onError(err)
+		}
+	}
+	s, err := session.Start(ctx, client, session.Options{Play: streaming.PlayOptions{Target: target, Resolution: 1080}, TransferToken: func(ctx context.Context) (string, error) {
+		t, err := auth.NewClient().TransferToken(ctx, refresh)
+		return t.AccessToken, err
+	}, RTC: webrtc.Configuration{ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:worldaz.relay.teams.microsoft.com:3478"}}}}, OnTrack: track, OnError: onError})
+	if err != nil {
+		a.update(func() {
+			a.busy = false
+			a.streamCancel = nil
+			if ctx.Err() != nil {
+				a.status = "Stream stopped."
+			} else {
+				a.status = "Stream failed: " + err.Error()
+			}
+		})
+		return
+	}
+	a.update(func() {
+		if ctx.Err() == nil {
+			a.busy = false
+			a.status = "Connected; waiting for video…"
+		}
+	})
+	<-ctx.Done()
+	_ = s.Close()
+	a.update(func() {
+		if a.streamCancel == nil {
+			a.busy = false
+			a.status = "Stream stopped."
+		}
 	})
 }
 func main() {
