@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -155,5 +157,33 @@ func TestCanceledPersistKeepsPreviousCredential(t *testing.T) {
 	}
 	if store.value != "previous" {
 		t.Fatal("canceled save replaced previous credentials")
+	}
+}
+
+func TestCloudFallbackPreservesBothFailures(t *testing.T) {
+	var freeCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			fmt.Fprint(w, `{"access_token":"access"}`)
+		case "/user":
+			fmt.Fprint(w, `{"Token":"user"}`)
+		case "/xsts":
+			fmt.Fprint(w, `{"Token":"xsts"}`)
+		case "/paid":
+			w.WriteHeader(http.StatusServiceUnavailable)
+		case "/free":
+			freeCalls.Add(1)
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	s := &Session{refresh: "refresh", microsoft: &Client{endpoint: server.URL + "/oauth", http: server.Client()}, xbox: &XboxClient{http: server.Client(), userURL: server.URL + "/user", xstsURL: server.URL + "/xsts", cloudURL: server.URL + "/paid", freeURL: server.URL + "/free"}}
+	_, _, err := s.StreamingToken(context.Background(), "cloud")
+	if err == nil || !strings.Contains(err.Error(), "subscription cloud: Xbox authentication returned HTTP 503") || !strings.Contains(err.Error(), "free-to-play cloud: Xbox authentication returned HTTP 403") || freeCalls.Load() != 1 {
+		t.Fatalf("missing cloud failure details: %v", err)
 	}
 }

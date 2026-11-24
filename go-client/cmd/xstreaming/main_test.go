@@ -295,3 +295,13 @@ func TestControllerMonitorStopsWithSession(t *testing.T) {
 	close(done)
 	monitorControllerReady(context.Background(), done, make(chan struct{}), func() bool { return false }, time.Second, time.Millisecond, func(bool) { t.Error("notification after session ended") })
 }
+
+func TestCloudAndExpiredSignInTranslations(t *testing.T) {
+	a := &app{prefs: settings.Settings{UILanguage: "简体中文"}}
+	if got := a.tr("Sign-in expired; please sign in again."); got != "登录信息已失效，请重新登录。" {
+		t.Fatal(got)
+	}
+	if got := a.tr("Unable to connect to cloud games: connection failed"); got != "无法连接云游戏：connection failed" {
+		t.Fatal(got)
+	}
+}

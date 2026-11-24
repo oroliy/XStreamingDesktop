@@ -472,7 +472,7 @@ func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs se
 	if err != nil {
 		a.update(func() {
 			if ctx.Err() == nil && a.cloudGeneration.Load() == generation {
-				a.cloudStatus = "Cloud games unavailable for this account or region."
+				a.cloudStatus = "Unable to connect to cloud games: " + err.Error()
 			}
 		})
 		return
@@ -491,7 +491,7 @@ func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs se
 	if err != nil {
 		a.update(func() {
 			if ctx.Err() == nil && a.cloudGeneration.Load() == generation {
-				a.cloudStatus = "Unable to load cloud games."
+				a.cloudStatus = "Unable to load cloud games: " + err.Error()
 			}
 		})
 		return

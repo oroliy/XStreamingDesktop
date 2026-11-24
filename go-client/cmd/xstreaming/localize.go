@@ -7,7 +7,7 @@ var chinese = map[string]string{
 	"Full screen": "全屏", "Exit full screen": "退出全屏", "Stop stream": "停止串流", "Cancel sign-in": "取消登录",
 	"Open Microsoft sign-in page": "打开微软登录页面", "Enable keyboard controller": "启用键盘手柄", "Disable keyboard controller": "停用键盘手柄",
 	"WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable": "WASD：左摇杆 · TFGH：右摇杆 · IJKL：面键 · 方向键：方向键 · Esc：退出",
-	"Saved sign-in expired; please sign in again.":                                        "已保存的登录信息已失效，请重新登录。", "Sign in with Microsoft": "使用微软账号登录", "Sign out": "退出登录", "Consoles": "主机", "Refresh consoles": "刷新主机", "Wake console": "唤醒主机", "Start stream": "开始串流",
+	"Sign-in expired; please sign in again.":                                              "登录信息已失效，请重新登录。", "Sign in with Microsoft": "使用微软账号登录", "Sign out": "退出登录", "Consoles": "主机", "Refresh consoles": "刷新主机", "Wake console": "唤醒主机", "Start stream": "开始串流",
 	"Settings": "设置", "Resolution": "分辨率", "Language": "游戏语言", "Market": "目录市场", "Interface language": "界面语言", "Prefer IPv6 candidates": "优先使用 IPv6 候选地址", "Starting volume": "启动音量", "Stick dead zone": "摇杆死区",
 	"Keyboard controller": "键盘手柄", "Controller input is still connecting.": "手柄输入仍在连接中。", "On": "开机", "Off": "关机", "ConnectedStandby": "待机",
 	"Cloud games": "云游戏", "Search games": "搜索游戏", "Reload cloud catalog": "重新加载云游戏目录", "Play": "开始游戏", "Visit: ": "访问：", "Code: ": "代码：",
@@ -19,7 +19,7 @@ var chinese = map[string]string{
 var chinesePrefixes = []struct{ en, zh string }{
 	{"ffmpeg is required for streaming; install FFmpeg and add it to PATH: ", "串流需要 ffmpeg；请安装 FFmpeg 并加入 PATH："},
 	{"ffplay is required for streaming; install FFmpeg and add it to PATH: ", "串流需要 ffplay；请安装 FFmpeg 并加入 PATH："},
-	{"Estimated queue wait: ", "预计排队时间（分钟）："}, {"Connection timed out; remote session cleanup failed: ", "连接超时，且远程会话清理失败："}, {"Stream stopped; remote session cleanup failed: ", "串流已停止，但远程会话清理失败："}, {"Connection failed; remote session cleanup failed: ", "连接失败，且远程会话清理失败："}, {"Sign-in failed: ", "登录失败："}, {"Stream failed: ", "串流启动失败："}, {"Stream error: ", "串流错误："}, {"Wake request failed: ", "唤醒请求失败："}, {"Unable to refresh consoles: ", "无法刷新主机："}, {"Unable to save settings: ", "无法保存设置："}, {"Signed out locally; unable to remove saved login: ", "已在本次运行中退出，但无法删除已保存的登录信息："},
+	{"Unable to connect to cloud games: ", "无法连接云游戏："}, {"Unable to load cloud games: ", "无法加载云游戏："}, {"Estimated queue wait: ", "预计排队时间（分钟）："}, {"Connection timed out; remote session cleanup failed: ", "连接超时，且远程会话清理失败："}, {"Stream stopped; remote session cleanup failed: ", "串流已停止，但远程会话清理失败："}, {"Connection failed; remote session cleanup failed: ", "连接失败，且远程会话清理失败："}, {"Sign-in failed: ", "登录失败："}, {"Stream failed: ", "串流启动失败："}, {"Stream error: ", "串流错误："}, {"Wake request failed: ", "唤醒请求失败："}, {"Unable to refresh consoles: ", "无法刷新主机："}, {"Unable to save settings: ", "无法保存设置："}, {"Signed out locally; unable to remove saved login: ", "已在本次运行中退出，但无法删除已保存的登录信息："},
 }
 
 func (a *app) tr(text string) string {

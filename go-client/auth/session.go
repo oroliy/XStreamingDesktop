@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -173,7 +174,14 @@ func (s *Session) StreamingToken(ctx context.Context, kind string) (string, stri
 	}
 	stream, err := s.xbox.Streaming(ctx, xsts.Token, offering)
 	if err != nil && kind == "cloud" {
+		if ctx.Err() != nil {
+			return "", "", ctx.Err()
+		}
+		paidErr := err
 		stream, err = s.xbox.Streaming(ctx, xsts.Token, "xgpuwebf2p")
+		if err != nil {
+			err = errors.Join(fmt.Errorf("subscription cloud: %w", paidErr), fmt.Errorf("free-to-play cloud: %w", err))
+		}
 	}
 	if err != nil {
 		return "", "", err
