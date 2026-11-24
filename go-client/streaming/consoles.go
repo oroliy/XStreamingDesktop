@@ -2,15 +2,45 @@ package streaming
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 )
 
 type Console struct {
 	ServerID    string `json:"serverId"`
-	Name        string `json:"deviceName"`
+	Name        string `json:"name"`
 	ConsoleType string `json:"consoleType"`
 	PowerState  string `json:"powerState"`
+}
+
+// UnmarshalJSON accepts both streaming-service names and SmartGlass aliases.
+func (c *Console) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		ServerID    string `json:"serverId"`
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		DeviceName  string `json:"deviceName"`
+		ConsoleType string `json:"consoleType"`
+		PowerState  string `json:"powerState"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	c.ServerID = raw.ServerID
+	if c.ServerID == "" {
+		c.ServerID = raw.ID
+	}
+	c.Name = raw.Name
+	if c.Name == "" {
+		c.Name = raw.DeviceName
+	}
+	if c.Name == "" {
+		c.Name = c.ServerID
+	}
+	c.ConsoleType = raw.ConsoleType
+	c.PowerState = raw.PowerState
+	return nil
 }
 
 // Consoles lists remote-play consoles available to the signed-in account.
