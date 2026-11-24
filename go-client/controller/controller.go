@@ -48,6 +48,11 @@ func ApplyDeadzone(x, y, deadzone float64) (float64, float64) {
 // Run sends up to four connected controllers until ctx is canceled.
 // On disconnect it sends a neutral frame to release held buttons.
 func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChannel, ready <-chan struct{}, keyboard *Keyboard, deadzone float64, pollingRate int, onError func(error), onRecovery func()) error {
+	feedback := vibrationFeedback(channel)
+	return runWithFeedback(ctx, sender, channel, ready, keyboard, deadzone, pollingRate, gamepad.Pads, onError, onRecovery, feedback, setPadVibration)
+}
+
+func vibrationFeedback(channel *webrtc.DataChannel) <-chan protocol.Vibration {
 	feedback := make(chan protocol.Vibration, 64)
 	channel.OnMessage(func(msg webrtc.DataChannelMessage) {
 		if msg.IsString {
@@ -61,7 +66,7 @@ func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChan
 			}
 		}
 	})
-	return runWithFeedback(ctx, sender, channel, ready, keyboard, deadzone, pollingRate, gamepad.Pads, onError, onRecovery, feedback, setPadVibration)
+	return feedback
 }
 
 type inputSender interface {
