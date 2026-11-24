@@ -341,6 +341,19 @@ func (a *app) restore(prefs settings.Settings) {
 func (a *app) startStream(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	if err := media.CheckDependencies(); err != nil {
+		stopped := ctx.Err() != nil
+		a.update(func() {
+			a.busy = false
+			a.streamCancel = nil
+			if stopped {
+				a.status = "Stream stopped."
+			} else {
+				a.status = err.Error()
+			}
+		})
+		return
+	}
 	onError := func(err error) {
 		if ctx.Err() == nil {
 			a.update(func() {
@@ -365,9 +378,14 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 				onError(err)
 				return
 			}
-			defer player.Close()
-			if err = media.ReceiveOpus(t, player); err != nil && ctx.Err() == nil {
-				onError(err)
+			readErr := media.ReceiveOpus(t, player)
+			closeErr := player.Close()
+			if ctx.Err() == nil {
+				if closeErr != nil {
+					onError(closeErr)
+				} else if readErr != nil {
+					onError(readErr)
+				}
 			}
 			return
 		}
@@ -395,9 +413,14 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 			onError(err)
 			return
 		}
-		defer decoder.Close()
-		if err = media.ReceiveH264(t, decoder); err != nil && ctx.Err() == nil {
-			onError(err)
+		readErr := media.ReceiveH264(t, decoder)
+		closeErr := decoder.Close()
+		if ctx.Err() == nil {
+			if closeErr != nil {
+				onError(closeErr)
+			} else if readErr != nil {
+				onError(readErr)
+			}
 		}
 	}
 	s, err := session.Start(ctx, client, session.Options{Play: streaming.PlayOptions{Target: target, Resolution: prefs.ResolutionCode(), Locale: prefs.Language}, TransferToken: func(ctx context.Context) (string, error) {
@@ -428,10 +451,11 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		}
 	}})
 	if err != nil {
+		stopped := ctx.Err() != nil
 		a.update(func() {
 			a.busy = false
 			a.streamCancel = nil
-			if ctx.Err() != nil {
+			if stopped {
 				a.status = "Stream stopped."
 			} else {
 				a.status = "Stream failed: " + err.Error()

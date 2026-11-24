@@ -41,7 +41,8 @@ func NewVideoDecoder(ctx context.Context, onFrame func(image.Image)) (*VideoDeco
 	if err != nil {
 		return nil, err
 	}
-	cmd.Stderr = io.Discard
+	diagnostic := &diagnosticTail{}
+	cmd.Stderr = diagnostic
 	if err = cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start ffmpeg: %w", err)
 	}
@@ -71,8 +72,8 @@ func NewVideoDecoder(ctx context.Context, onFrame func(image.Image)) (*VideoDeco
 		}
 		err := cmd.Wait()
 		d.mu.Lock()
-		if d.err == nil && err != nil {
-			d.err = fmt.Errorf("ffmpeg: %w", err)
+		if err != nil {
+			d.err = processError("ffmpeg", err, diagnostic)
 		}
 		d.mu.Unlock()
 	}()

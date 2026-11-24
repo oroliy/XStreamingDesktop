@@ -16,10 +16,11 @@ import (
 // AudioPlayer streams Opus RTP through an Ogg container to ffplay.
 // It requires ffplay and an available audio device.
 type AudioPlayer struct {
-	cmd  *exec.Cmd
-	ogg  *oggwriter.OggWriter
-	once sync.Once
-	err  error
+	cmd        *exec.Cmd
+	ogg        *oggwriter.OggWriter
+	once       sync.Once
+	err        error
+	diagnostic *diagnosticTail
 }
 
 func NewAudioPlayer(ctx context.Context, channels uint16) (*AudioPlayer, error) {
@@ -32,27 +33,30 @@ func NewAudioPlayer(ctx context.Context, channels uint16) (*AudioPlayer, error) 
 		return nil, err
 	}
 	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
+	diagnostic := &diagnosticTail{}
+	cmd.Stderr = diagnostic
 	if err = cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start ffplay: %w", err)
 	}
 	writer, err := oggwriter.NewWith(stdin, 48000, channels)
 	if err != nil {
 		_ = stdin.Close()
-		_ = cmd.Wait()
+		if waitErr := cmd.Wait(); waitErr != nil {
+			return nil, processError("ffplay", waitErr, diagnostic)
+		}
 		return nil, err
 	}
-	return &AudioPlayer{cmd: cmd, ogg: writer}, nil
+	return &AudioPlayer{cmd: cmd, ogg: writer, diagnostic: diagnostic}, nil
 }
 func (p *AudioPlayer) WriteRTP(packet *rtp.Packet) error { return p.ogg.WriteRTP(packet) }
 func (p *AudioPlayer) Close() error {
 	p.once.Do(func() {
 		err := p.ogg.Close()
 		waitErr := p.cmd.Wait()
-		if err != nil {
+		if waitErr != nil {
+			p.err = processError("ffplay", waitErr, p.diagnostic)
+		} else if err != nil {
 			p.err = err
-		} else if waitErr != nil {
-			p.err = fmt.Errorf("ffplay: %w", waitErr)
 		}
 	})
 	return p.err
