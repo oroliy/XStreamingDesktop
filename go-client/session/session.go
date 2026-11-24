@@ -33,6 +33,8 @@ type Session struct {
 	done     <-chan struct{}
 	once     sync.Once
 	closeErr error
+	micMu    sync.Mutex
+	micOn    bool
 }
 type Options struct {
 	Play              streaming.PlayOptions

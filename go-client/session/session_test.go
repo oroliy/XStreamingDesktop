@@ -11,6 +11,8 @@ import (
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
+	pionmedia "github.com/pion/webrtc/v4/pkg/media"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,6 +29,17 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer remote.Close()
+	type microphonePacket struct {
+		payload []byte
+		track   *webrtc.TrackRemote
+	}
+	microphonePackets := make(chan microphonePacket, 1)
+	remote.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		packet, _, err := track.ReadRTP()
+		if err == nil {
+			microphonePackets <- microphonePacket{payload: packet.Payload, track: track}
+		}
+	})
 	var audioTrack *webrtc.TrackLocalStaticRTP
 	audioReady := make(chan struct{}, 1)
 	audioDone := make(chan struct{})
@@ -80,6 +93,8 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 	})
 	var answer string
 	var stopped atomic.Int32
+	var chatOffers atomic.Int32
+	var failChat atomic.Bool
 	stoppedSignal := make(chan struct{}, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -89,11 +104,21 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 			fmt.Fprint(w, `{"state":"Provisioned"}`)
 		case r.URL.Path == "/v5/sessions/home/abc/sdp" && r.Method == "POST":
 			var offer struct {
-				SDP string `json:"sdp"`
+				SDP           string `json:"sdp"`
+				Configuration struct {
+					Chat bool `json:"isMediaStreamsChatRenegotiation"`
+				} `json:"configuration"`
 			}
 			if e := json.NewDecoder(r.Body).Decode(&offer); e != nil {
 				t.Error(e)
 				return
+			}
+			if offer.Configuration.Chat {
+				chatOffers.Add(1)
+				if failChat.Load() {
+					w.WriteHeader(http.StatusBadGateway)
+					return
+				}
 			}
 			if e := remote.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: offer.SDP}); e != nil {
 				t.Error(e)
@@ -239,7 +264,50 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 			t.Fatal("missing input report")
 		}
 	}
-	cancel()
+	mic, err := s.StartMicrophone(ctx)
+	if err != nil {
+		t.Fatalf("negotiate microphone: %v", err)
+	}
+	if chatOffers.Load() != 1 {
+		t.Fatal("missing chat renegotiation")
+	}
+	if _, err = s.StartMicrophone(ctx); err == nil {
+		t.Fatal("accepted a second active microphone")
+	}
+	if err = mic.WriteSample(pionmedia.Sample{Data: []byte{0xf8, 0xff, 0xfe}, Duration: 20 * time.Millisecond}); err != nil {
+		t.Fatal(err)
+	}
+	var remoteMic *webrtc.TrackRemote
+	select {
+	case packet := <-microphonePackets:
+		if len(packet.payload) != 3 || packet.payload[0] != 0xf8 {
+			t.Fatalf("unexpected microphone packet: %x", packet.payload)
+		}
+		remoteMic = packet.track
+	case <-ctx.Done():
+		t.Fatal("microphone packet did not arrive")
+	}
+	if err = s.StopMicrophone(); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.StopMicrophone(); err != nil {
+		t.Fatal(err)
+	}
+	if err = remoteMic.SetReadDeadline(time.Now().Add(200 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	if err = mic.WriteSample(pionmedia.Sample{Data: []byte{0xf8, 0xff, 0xfe}, Duration: 20 * time.Millisecond}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = remoteMic.ReadRTP(); err == nil {
+		t.Fatal("microphone sent data after stop")
+	} else if timeout, ok := err.(net.Error); !ok || !timeout.Timeout() {
+		t.Fatalf("unexpected read error after stop: %v", err)
+	}
+	failChat.Store(true)
+	if _, err = s.StartMicrophone(ctx); err == nil {
+		t.Fatal("accepted failed chat renegotiation")
+	}
 	select {
 	case <-stoppedSignal:
 	case <-time.After(3 * time.Second):

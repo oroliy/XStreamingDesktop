@@ -12,6 +12,7 @@ import (
 type Peer struct {
 	ready    chan struct{}
 	conn     *webrtc.PeerConnection
+	audio    *webrtc.RTPTransceiver
 	channels map[string]*webrtc.DataChannel
 }
 
@@ -42,6 +43,7 @@ func New(config webrtc.Configuration, onTrack func(*webrtc.TrackRemote, *webrtc.
 	if err = audio.SetCodecPreferences([]webrtc.RTPCodecParameters{{RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2, SDPFmtpLine: "minptime=10;useinbandfec=1"}, PayloadType: 111}}); err != nil {
 		return fail(err)
 	}
+	p.audio = audio
 	video, err := conn.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly})
 	if err != nil {
 		return fail(err)
@@ -101,3 +103,12 @@ func (p *Peer) OnConnectionStateChange(fn func(webrtc.PeerConnectionState)) {
 }
 func (p *Peer) Channel(name string) *webrtc.DataChannel { return p.channels[name] }
 func (p *Peer) Close() error                            { return p.conn.Close() }
+
+// ReplaceMicrophone attaches an Opus sample track or detaches it when nil.
+// It does not access any recording device.
+func (p *Peer) ReplaceMicrophone(track *webrtc.TrackLocalStaticSample) error {
+	if track == nil {
+		return p.audio.Sender().ReplaceTrack(nil)
+	}
+	return p.audio.Sender().ReplaceTrack(track)
+}
