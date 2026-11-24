@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/egoist/mygo/ui"
 	"github.com/oroliy/XStreamingDesktop/go-client/auth"
+	"github.com/oroliy/XStreamingDesktop/go-client/settings"
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
 	"testing"
 )
@@ -46,6 +47,19 @@ func TestCloudAccountWithoutHomeClient(t *testing.T) {
 	a := &app{credentials: auth.NewSession("x"), cloudStatus: "3 games", titles: []streaming.Title{{TitleID: "game", Name: "Cloud title"}}}
 	tt := ui.NewTester(a.view, 1024, 768)
 	if tt.HasText("Sign in with Microsoft") || !tt.HasText("Sign out") || !tt.HasText("Cloud title") {
+		t.Fatal(tt.Texts())
+	}
+}
+
+func TestCloudGameSearch(t *testing.T) {
+	a := &app{prefs: settings.Defaults(), credentials: auth.NewSession("x"), titles: []streaming.Title{{TitleID: "1", Name: "Halo Infinite"}, {TitleID: "2", Name: "Forza Horizon"}}}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if !tt.HasText("Halo Infinite") || !tt.HasText("Forza Horizon") {
+		t.Fatal(tt.Texts())
+	}
+	a.filter = "hAlO"
+	tt.Frame()
+	if !tt.HasText("Halo Infinite") || tt.HasText("Forza Horizon") {
 		t.Fatal(tt.Texts())
 	}
 }

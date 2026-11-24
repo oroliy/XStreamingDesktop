@@ -17,6 +17,6 @@ The experimental `media` package can depacketize H.264 RTP and decode H.264 vide
 
 The preview reads the first controller through MyGo’s gamepad plugin. Linux requires permission to read the relevant `/dev/input` device. Rumble and multiple controllers are not yet supported.
 
-Cloud catalog names currently use the US market and English. If catalog lookup fails, the preview displays product IDs. Cloud access depends on account entitlements and region.
+Cloud catalog market and language and streaming resolution are configurable in the preview. Reload the catalog after changing market or language. If catalog lookup fails, the preview displays product IDs. Cloud access depends on account entitlements and region.
 
 Login persistence uses MyGo Secrets (Keychain, Windows Credential Manager or Linux Secret Service). If unavailable, sign-in works for the current run without persistence.

@@ -17,6 +17,7 @@ import (
 	"github.com/oroliy/XStreamingDesktop/go-client/controller"
 	"github.com/oroliy/XStreamingDesktop/go-client/media"
 	"github.com/oroliy/XStreamingDesktop/go-client/session"
+	"github.com/oroliy/XStreamingDesktop/go-client/settings"
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
 	"github.com/pion/webrtc/v4"
 )
@@ -38,6 +39,10 @@ type app struct {
 	streamCancel      context.CancelFunc
 	frame             *ui.Bitmap
 	framePending      atomic.Bool
+	cloudGeneration   atomic.Uint64
+	prefs             settings.Settings
+	settingsPath      string
+	filter            string
 }
 
 func (a *app) view(c *ui.Context) {
@@ -70,7 +75,7 @@ func (a *app) view(c *ui.Context) {
 				ctx, cancel := context.WithCancel(a.ctx)
 				a.accountCtx = ctx
 				a.accountCancel = cancel
-				go a.signIn(ctx)
+				go a.signIn(ctx, a.prefs)
 			}
 		}
 		if a.credentials != nil && !a.busy && a.streamCancel == nil {
@@ -107,16 +112,37 @@ func (a *app) view(c *ui.Context) {
 						a.streamCancel = cancel
 						a.busy = true
 						a.status = "Starting stream…"
-						go a.startStream(ctx, a.client, a.credentials, console.ServerID)
+						go a.startStream(ctx, a.client, a.credentials, console.ServerID, a.prefs)
 					}
 				}
 			}
+			ui.Text(c, "Settings").Bold()
+			ui.Row(c).Gap(8).Children(func() {
+				ui.Text(c, "Resolution")
+				changed := ui.Select(c.Key("resolution"), &a.prefs.Resolution, []string{"720p", "1080p", "1080p HQ"}).Changed()
+				ui.Text(c, "Language")
+				changed = ui.Select(c.Key("language"), &a.prefs.Language, []string{"en-US", "zh-TW", "zh-CN", "ja-JP"}).Changed() || changed
+				ui.Text(c, "Market")
+				changed = ui.Select(c.Key("market"), &a.prefs.Market, []string{"US", "TW", "JP", "GB"}).Changed() || changed
+				if changed && a.settingsPath != "" {
+					if err := settings.Save(a.settingsPath, a.prefs); err != nil {
+						a.status = "Unable to save settings: " + err.Error()
+					}
+				}
+			})
 			ui.Text(c, "Cloud games").Bold()
+			ui.TextInput(c.Key("search"), &a.filter).Placeholder("Search games").Label("Search games").Width(320)
+			if a.credentials != nil && a.accountCtx != nil && !a.busy && a.streamCancel == nil {
+				if ui.Button(c.Key("reload-cloud"), "Reload cloud catalog").Clicked() {
+					a.cloudStatus = "Loading cloud games…"
+					go a.loadCloud(a.accountCtx, a.credentials, a.prefs)
+				}
+			}
 			if a.cloudStatus != "" {
 				ui.Text(c, a.cloudStatus)
 			}
 			for index, title := range a.titles {
-				if title.TitleID == "" {
+				if title.TitleID == "" || !strings.Contains(strings.ToLower(title.Name), strings.ToLower(strings.TrimSpace(a.filter))) {
 					continue
 				}
 				ui.Text(c, title.Name)
@@ -126,7 +152,7 @@ func (a *app) view(c *ui.Context) {
 						a.streamCancel = cancel
 						a.busy = true
 						a.status = "Starting cloud game…"
-						go a.startStream(ctx, a.cloud, a.credentials, title.TitleID)
+						go a.startStream(ctx, a.cloud, a.credentials, title.TitleID, a.prefs)
 					}
 				}
 			}
@@ -148,7 +174,7 @@ func (secretStore) Save(token string) error {
 func (secretStore) Delete() error {
 	return mygo.Secrets.Service("XStreamingDesktop-Go").Delete(tokenKey)
 }
-func (a *app) signIn(ctx context.Context) {
+func (a *app) signIn(ctx context.Context, prefs settings.Settings) {
 	microsoft := auth.NewClient()
 	code, err := microsoft.Start(ctx)
 	if err != nil {
@@ -169,9 +195,9 @@ func (a *app) signIn(ctx context.Context) {
 		}
 		return
 	}
-	a.connectAccount(ctx, token.RefreshToken)
+	a.connectAccount(ctx, token.RefreshToken, prefs)
 }
-func (a *app) connectAccount(ctx context.Context, refresh string) {
+func (a *app) connectAccount(ctx context.Context, refresh string, prefs settings.Settings) {
 	a.update(func() {
 		if ctx.Err() == nil {
 			a.code = ""
@@ -219,13 +245,14 @@ func (a *app) connectAccount(ctx context.Context, refresh string) {
 			a.status += " Login could not be saved in the system credential store."
 		}
 	})
-	go a.loadCloud(ctx, credentials)
+	go a.loadCloud(ctx, credentials, prefs)
 }
-func (a *app) loadCloud(ctx context.Context, credentials *auth.Session) {
+func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs settings.Settings) {
+	generation := a.cloudGeneration.Add(1)
 	token, region, err := credentials.StreamingToken(ctx, "cloud")
 	if err != nil {
 		a.update(func() {
-			if ctx.Err() == nil {
+			if ctx.Err() == nil && a.cloudGeneration.Load() == generation {
 				a.cloudStatus = "Cloud games unavailable for this account or region."
 			}
 		})
@@ -234,7 +261,7 @@ func (a *app) loadCloud(ctx context.Context, credentials *auth.Session) {
 	client, err := streaming.NewClient(region, token, "cloud", nil)
 	if err != nil {
 		a.update(func() {
-			if ctx.Err() == nil {
+			if ctx.Err() == nil && a.cloudGeneration.Load() == generation {
 				a.cloudStatus = "Invalid cloud service region."
 			}
 		})
@@ -244,13 +271,13 @@ func (a *app) loadCloud(ctx context.Context, credentials *auth.Session) {
 	titles, err := client.Titles(ctx)
 	if err != nil {
 		a.update(func() {
-			if ctx.Err() == nil {
+			if ctx.Err() == nil && a.cloudGeneration.Load() == generation {
 				a.cloudStatus = "Unable to load cloud games."
 			}
 		})
 		return
 	}
-	names, err := catalog.NewClient().Resolve(ctx, titles, "US", "en-US")
+	names, err := catalog.NewClient().Resolve(ctx, titles, prefs.Market, prefs.Language)
 	if err != nil {
 		names = titles
 		for i := range names {
@@ -261,14 +288,14 @@ func (a *app) loadCloud(ctx context.Context, credentials *auth.Session) {
 		}
 	}
 	a.update(func() {
-		if ctx.Err() == nil {
+		if ctx.Err() == nil && a.cloudGeneration.Load() == generation {
 			a.cloud = client
 			a.titles = names
 			a.cloudStatus = fmt.Sprintf("%d games", len(names))
 		}
 	})
 }
-func (a *app) restore() {
+func (a *app) restore(prefs settings.Settings) {
 	token, err := mygo.Secrets.Service("XStreamingDesktop-Go").Get(tokenKey)
 	if err != nil || len(token) == 0 {
 		a.update(func() {
@@ -280,9 +307,9 @@ func (a *app) restore() {
 		return
 	}
 	a.update(func() { a.status = "Restoring sign-in…" })
-	a.connectAccount(a.accountCtx, string(token))
+	a.connectAccount(a.accountCtx, string(token), prefs)
 }
-func (a *app) startStream(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string) {
+func (a *app) startStream(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings) {
 	onError := func(err error) {
 		if ctx.Err() == nil {
 			a.update(func() {
@@ -342,7 +369,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 			onError(err)
 		}
 	}
-	s, err := session.Start(ctx, client, session.Options{Play: streaming.PlayOptions{Target: target, Resolution: 1080}, TransferToken: func(ctx context.Context) (string, error) {
+	s, err := session.Start(ctx, client, session.Options{Play: streaming.PlayOptions{Target: target, Resolution: prefs.ResolutionCode(), Locale: prefs.Language}, TransferToken: func(ctx context.Context) (string, error) {
 		return credentials.Transfer(ctx)
 	}, RTC: webrtc.Configuration{ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:worldaz.relay.teams.microsoft.com:3478"}}}}, OnTrack: track, OnError: onError, OnConnectionState: func(state webrtc.PeerConnectionState) {
 		if ctx.Err() != nil {
@@ -407,10 +434,17 @@ func main() {
 	mygo.App.WhenReady(func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		accountCtx, accountCancel := context.WithCancel(ctx)
-		a := &app{ctx: ctx, cancel: cancel, accountCtx: accountCtx, accountCancel: accountCancel, busy: true}
+		prefs := settings.Defaults()
+		path, err := settings.Path()
+		if err == nil {
+			if saved, e := settings.Load(path); e == nil {
+				prefs = saved
+			}
+		}
+		a := &app{ctx: ctx, cancel: cancel, accountCtx: accountCtx, accountCancel: accountCancel, busy: true, prefs: prefs, settingsPath: path}
 		a.win = mygo.NewWindow(mygo.WindowOptions{Title: "XStreaming (Go preview)", Content: ui.View(a.view)})
 		a.win.OnClosed(a.cancel)
-		go a.restore()
+		go a.restore(prefs)
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
