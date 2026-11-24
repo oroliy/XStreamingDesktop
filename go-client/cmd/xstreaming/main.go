@@ -90,6 +90,7 @@ func (a *app) view(c *ui.Context) {
 		if a.streamCancel != nil && a.controlsHidden {
 			if a.frame != nil {
 				ui.Image(c, a.frame).FillWidth().Grow(1).Fit(videoFit(a.prefs.VideoFit))
+				a.performanceMetrics(c)
 			}
 			if a.status != "" && a.status != "Streaming video." {
 				ui.Text(c, a.tr(a.status))
@@ -113,10 +114,7 @@ func (a *app) view(c *ui.Context) {
 		ui.Text(c, a.tr("Experimental preview — controller and playback support are unverified."))
 		if a.frame != nil {
 			ui.Image(c, a.frame).FillWidth().Grow(1).Fit(videoFit(a.prefs.VideoFit))
-			if a.showPerformance {
-				ui.Text(c, fmt.Sprintf(a.tr("Decoded video: %.1f FPS"), a.decodedFPS))
-				ui.Text(c, fmt.Sprintf(a.tr("Video data: %.2f Mb/s"), a.videoMbps))
-			}
+			a.performanceMetrics(c)
 		}
 		if a.streamCancel != nil {
 			performanceLabel := "Show performance"
@@ -483,6 +481,13 @@ func (a *app) view(c *ui.Context) {
 			}
 		})
 	})
+}
+
+func (a *app) performanceMetrics(c *ui.Context) {
+	if a.showPerformance {
+		ui.Text(c, fmt.Sprintf(a.tr("Decoded video: %.1f FPS"), a.decodedFPS))
+		ui.Text(c, fmt.Sprintf(a.tr("Video data: %.2f Mb/s"), a.videoMbps))
+	}
 }
 
 func (a *app) captureKeyboard(c *ui.Context, showHelp bool) {

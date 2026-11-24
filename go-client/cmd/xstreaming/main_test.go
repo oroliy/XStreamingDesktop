@@ -414,12 +414,28 @@ func TestPerformanceControls(t *testing.T) {
 	if !tt.HasText("Decoded video: 0.0 FPS") || !tt.HasText("Video data: 0.00 Mb/s") {
 		t.Fatal(tt.Texts())
 	}
+	if err := tt.Click("Hide controls"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Decoded video: 0.0 FPS") || !tt.HasText("Video data: 0.00 Mb/s") {
+		t.Fatal("performance metrics disappeared with the controls")
+	}
+	if err := tt.Click("Show controls"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	if err := tt.Click("Hide performance"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
 	if tt.HasText("Decoded video: 0.0 FPS") {
 		t.Fatal("performance remained visible")
+	}
+	a.showPerformance, a.decodedFPS, a.videoMbps = true, 60, 8
+	a.stopStream(false)
+	if a.showPerformance || a.decodedFPS != 0 || a.videoMbps != 0 {
+		t.Fatal("performance state survived the stream")
 	}
 }
 
