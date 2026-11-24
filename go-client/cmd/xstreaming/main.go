@@ -35,7 +35,7 @@ type app struct {
 func (a *app) view(c *ui.Context) {
 	ui.Column(c).Fill().Center().Gap(12).Children(func() {
 		ui.Text(c, "XStreaming").FontSize(32).Bold()
-		ui.Text(c, "Experimental preview — audio and controller support are not available.")
+		ui.Text(c, "Experimental preview — physical controller support is not available.")
 		if a.frame != nil {
 			ui.Image(c, a.frame).Width(640).Height(360).Fit(ui.Contain)
 		}
@@ -149,11 +149,24 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, refresh
 	}
 	track := func(t *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		if t.Kind() == webrtc.RTPCodecTypeAudio {
-			for {
-				if _, _, err := t.ReadRTP(); err != nil {
-					return
-				}
+			if !strings.EqualFold(t.Codec().MimeType, webrtc.MimeTypeOpus) {
+				onError(fmt.Errorf("unsupported audio codec: %s", t.Codec().MimeType))
+				return
 			}
+			channels := t.Codec().Channels
+			if channels == 0 {
+				channels = 2
+			}
+			player, err := media.NewAudioPlayer(ctx, channels)
+			if err != nil {
+				onError(err)
+				return
+			}
+			defer player.Close()
+			if err = media.ReceiveOpus(t, player); err != nil && ctx.Err() == nil {
+				onError(err)
+			}
+			return
 		}
 		if !strings.EqualFold(t.Codec().MimeType, webrtc.MimeTypeH264) {
 			onError(fmt.Errorf("unsupported media codec: %s", t.Codec().MimeType))
