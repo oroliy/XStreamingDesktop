@@ -17,6 +17,7 @@ import (
 	"github.com/oroliy/XStreamingDesktop/go-client/controller"
 	"github.com/oroliy/XStreamingDesktop/go-client/media"
 	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
+	"github.com/oroliy/XStreamingDesktop/go-client/remote"
 	"github.com/oroliy/XStreamingDesktop/go-client/session"
 	"github.com/oroliy/XStreamingDesktop/go-client/settings"
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
@@ -147,6 +148,11 @@ func (a *app) view(c *ui.Context) {
 			for _, console := range a.consoles {
 				ui.Text(c, fmt.Sprintf("%s (%s) — %s", console.Name, console.ConsoleType, console.PowerState))
 				if !a.busy && a.streamCancel == nil && console.ServerID != "" {
+					if ui.Button(c.Key("wake-"+console.ServerID), "Wake console").Clicked() {
+						a.busy = true
+						a.status = "Sending wake request…"
+						go a.wakeConsole(a.accountCtx, a.credentials, console.ServerID)
+					}
 					if ui.Button(c.Key(console.ServerID), "Start stream").Clicked() {
 						ctx, cancel := context.WithCancel(a.ctx)
 						a.streamCancel = cancel
@@ -357,6 +363,23 @@ func (a *app) restore(prefs settings.Settings) {
 	}
 	a.update(func() { a.status = "Restoring sign-in…" })
 	a.connectAccount(a.accountCtx, string(token), prefs)
+}
+func (a *app) wakeConsole(ctx context.Context, credentials *auth.Session, id string) {
+	token, err := credentials.WebToken(ctx)
+	if err == nil {
+		err = remote.NewClient().Wake(ctx, id, token)
+	}
+	a.update(func() {
+		if ctx.Err() != nil {
+			return
+		}
+		a.busy = false
+		if err != nil {
+			a.status = "Wake request failed: " + err.Error()
+		} else {
+			a.status = "Wake request sent. The console may take a moment to start."
+		}
+	})
 }
 func (a *app) startStream(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings) {
 	ctx, cancel := context.WithCancel(ctx)

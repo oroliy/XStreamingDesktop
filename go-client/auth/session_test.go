@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -69,5 +70,32 @@ func TestSessionCredentialStorage(t *testing.T) {
 	}
 	if _, err := s.Transfer(context.Background()); err == nil {
 		t.Fatal("logged out session accepted refresh")
+	}
+}
+
+func TestWebTokenRelyingParty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			fmt.Fprint(w, `{"access_token":"access"}`)
+		case "/user":
+			fmt.Fprint(w, `{"Token":"user"}`)
+		case "/xsts":
+			var body struct {
+				RelyingParty string `json:"RelyingParty"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RelyingParty != "http://xboxlive.com" {
+				t.Error("incorrect XSTS relying party")
+			}
+			fmt.Fprint(w, `{"Token":"web","DisplayClaims":{"xui":[{"uhs":"hash"}]}}`)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer server.Close()
+	s := &Session{refresh: "refresh", microsoft: &Client{endpoint: server.URL + "/oauth", http: server.Client()}, xbox: &XboxClient{http: server.Client(), userURL: server.URL + "/user", xstsURL: server.URL + "/xsts"}}
+	token, err := s.WebToken(context.Background())
+	if err != nil || token.Token != "web" || len(token.DisplayClaims.XUI) != 1 {
+		t.Fatal(err)
 	}
 }

@@ -80,25 +80,37 @@ func (s *Session) Transfer(ctx context.Context) (string, error) {
 	return token.AccessToken, nil
 }
 
-// StreamingToken refreshes the Microsoft and Xbox credentials and returns the new regional token.
-func (s *Session) StreamingToken(ctx context.Context, kind string) (string, string, error) {
+// WebToken obtains an XSTS token for Xbox remote-management APIs.
+func (s *Session) WebToken(ctx context.Context) (XboxToken, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.xsts(ctx, "http://xboxlive.com")
+}
+
+// xsts runs under s.mu so refresh token rotation stays serialized.
+func (s *Session) xsts(ctx context.Context, party string) (XboxToken, error) {
 	if s.refresh == "" {
-		return "", "", errors.New("missing refresh token")
+		return XboxToken{}, errors.New("missing refresh token")
 	}
 	token, err := s.microsoft.Refresh(ctx, s.refresh)
 	if err != nil {
-		return "", "", err
+		return XboxToken{}, err
 	}
 	if token.RefreshToken != "" {
 		s.rotate(token.RefreshToken)
 	}
 	user, err := s.xbox.UserToken(ctx, token.AccessToken)
 	if err != nil {
-		return "", "", err
+		return XboxToken{}, err
 	}
-	xsts, err := s.xbox.XSTS(ctx, user.Token, "http://gssv.xboxlive.com/")
+	return s.xbox.XSTS(ctx, user.Token, party)
+}
+
+// StreamingToken refreshes the Microsoft and Xbox credentials and returns the new regional token.
+func (s *Session) StreamingToken(ctx context.Context, kind string) (string, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	xsts, err := s.xsts(ctx, "http://gssv.xboxlive.com/")
 	if err != nil {
 		return "", "", err
 	}
