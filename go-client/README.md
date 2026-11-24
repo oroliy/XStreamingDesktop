@@ -1,8 +1,10 @@
 # Go client (early development)
 
-This directory contains the beginning of the MyGo migration. The native window is an experimental preview: it can initiate home and cloud streaming and display decoded H.264 frames, but physical controller polling is implemented for the first gamepad, but vibration and other existing features are not. Input, audio and video have not been validated with a real Xbox. Use the original Electron application for streaming.
+This directory contains an early MyGo migration. The native window is an experimental preview that can initiate home and cloud streaming and display decoded H.264 frames. It reads the first gamepad; vibration and other existing features are not implemented. Input, audio and video have not been validated with a real Xbox. Use the original Electron application for streaming.
 
-Requires Go 1.27.3 or later and the platform dependencies documented by [MyGo](https://github.com/egoist/mygo).
+[中文说明](README.zh_CN.md)
+
+Requires Go 1.27.3 or later and the platform dependencies documented by [MyGo](https://github.com/egoist/mygo). The preview also requires `ffmpeg` and `ffplay` on PATH for video and audio.
 
 ```sh
 go test ./...
@@ -20,3 +22,5 @@ The preview reads the first controller through MyGo’s gamepad plugin. Linux re
 Cloud catalog market and language and streaming resolution are configurable in the preview. Reload the catalog after changing market or language. If catalog lookup fails, the preview displays product IDs. Cloud access depends on account entitlements and region.
 
 Login persistence uses MyGo Secrets (Keychain, Windows Credential Manager or Linux Secret Service). If unavailable, sign-in works for the current run without persistence.
+
+GitHub Actions uploads unsigned preview binaries as short-lived workflow artifacts for supported targets. They do not include FFmpeg or ffplay. On macOS and Linux, run `chmod +x xstreaming` after extracting the artifact.

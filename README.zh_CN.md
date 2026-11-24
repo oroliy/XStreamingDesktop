@@ -1,3 +1,5 @@
+> MyGo + Go 重写预览版请参阅 [Go 客户端说明](./go-client/README.zh_CN.md)。该版本仍在开发和验证中。
+
 <p align="center">
   <a href="https://github.com/Geocld/XStreaming">
     <img src="https://raw.githubusercontent.com/Geocld/XStreaming/main/images/logo.png" width="546">

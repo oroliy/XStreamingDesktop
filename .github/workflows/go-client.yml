@@ -48,8 +48,23 @@ jobs:
         with:
           go-version-file: go-client/go.mod
           cache-dependency-path: go-client/go.sum
-      - run: go build -o "$RUNNER_TEMP/xstreaming" ./cmd/xstreaming
+      - name: Build preview binary
+        run: |
+          mkdir -p "$RUNNER_TEMP/go-client"
+          if [ "$GOOS" = windows ]; then
+            binary="xstreaming.exe"
+          else
+            binary="xstreaming"
+          fi
+          go build -o "$RUNNER_TEMP/go-client/$binary" ./cmd/xstreaming
+          cp README.md README.zh_CN.md "$RUNNER_TEMP/go-client/"
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xstreaming-go-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ runner.temp }}/go-client/
+          if-no-files-found: error
+          retention-days: 14
