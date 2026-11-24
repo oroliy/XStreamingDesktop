@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"image"
+	"sync/atomic"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/oroliy/XStreamingDesktop/go-client/auth"
 	"github.com/oroliy/XStreamingDesktop/go-client/session"
+	"github.com/oroliy/XStreamingDesktop/go-client/settings"
 )
 
 func TestStreamControlsFitShortWindow(t *testing.T) {
@@ -24,5 +26,28 @@ func TestStreamControlsFitShortWindow(t *testing.T) {
 		if !ok || rect.W <= 0 || rect.H <= 0 || rect.Y < 0 || rect.Y+rect.H > 400 {
 			t.Errorf("%s is outside the window: %+v, found=%v", name, rect, ok)
 		}
+	}
+}
+
+func TestStreamControlsFitNarrowWindow(t *testing.T) {
+	for _, language := range []string{"English", "简体中文"} {
+		t.Run(language, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			a := &app{
+				streamCancel: cancel, streamCtx: ctx, accountCtx: ctx, streamConnected: true, inputReady: true,
+				streamHomeID: "test", streamDone: make(chan error, 1), streamPowerOff: &atomic.Bool{},
+				micSession: &session.Session{}, credentials: auth.NewSession("x"),
+				frame: ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 640, 360))), prefs: settings.Settings{UILanguage: language},
+			}
+			tt := ui.NewTester(a.view, 640, 480)
+			for _, text := range []string{"Stop stream", "Disconnect and power off", "Press Xbox button", "Enable keyboard controller", "Send text"} {
+				name := a.tr(text)
+				rect, ok := tt.Find(name)
+				if !ok || rect.W <= 0 || rect.H <= 0 || rect.X < 0 || rect.X+rect.W > 640 || rect.Y < 0 || rect.Y+rect.H > 480 {
+					t.Errorf("%s is outside the window: %+v, found=%v", name, rect, ok)
+				}
+			}
+		})
 	}
 }
