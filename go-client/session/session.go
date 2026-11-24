@@ -29,6 +29,7 @@ type Options struct {
 	RTC               webrtc.Configuration
 	OnTrack           func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
 	OnError           func(error)
+	OnProgress        func(string)
 	OnConnectionState func(webrtc.PeerConnectionState)
 	PreferIPv6        bool
 }
@@ -52,8 +53,11 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 			_ = s.Close()
 		}
 	}()
-	if err = client.WaitProvisioned(live, id, opts.TransferToken); err != nil {
+	if err = client.WaitProvisionedWithProgress(live, id, opts.TransferToken, opts.OnProgress); err != nil {
 		return nil, err
+	}
+	if opts.OnProgress != nil {
+		opts.OnProgress("Negotiating")
 	}
 	s.peer, err = peer.New(opts.RTC, opts.OnTrack)
 	if err != nil {

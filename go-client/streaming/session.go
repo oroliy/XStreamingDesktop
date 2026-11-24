@@ -37,6 +37,12 @@ func (c *Client) SessionID(result PlayResult) (string, error) {
 
 // WaitProvisioned polls session state and sends a console transfer token when requested.
 func (c *Client) WaitProvisioned(ctx context.Context, id string, transfer func(context.Context) (string, error)) error {
+	return c.WaitProvisionedWithProgress(ctx, id, transfer, nil)
+}
+
+// WaitProvisionedWithProgress reports changes in the service provisioning state.
+func (c *Client) WaitProvisionedWithProgress(ctx context.Context, id string, transfer func(context.Context) (string, error), progress func(string)) error {
+	previous := ""
 	for {
 		raw, err := c.State(ctx, id)
 		if err != nil {
@@ -48,6 +54,10 @@ func (c *Client) WaitProvisioned(ctx context.Context, id string, transfer func(c
 		}
 		if err = json.Unmarshal(raw, &state); err != nil {
 			return fmt.Errorf("invalid session state: %w", err)
+		}
+		if state.State != previous && progress != nil {
+			progress(state.State)
+			previous = state.State
 		}
 		switch state.State {
 		case "Provisioned":

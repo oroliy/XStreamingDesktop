@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -35,8 +36,12 @@ func TestWaitProvisionedConnect(t *testing.T) {
 	c, _ := NewClient(s.URL, "token", "home", s.Client())
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	if err := c.WaitProvisioned(ctx, "abc", func(context.Context) (string, error) { return "transfer", nil }); err != nil {
+	var progress []string
+	if err := c.WaitProvisionedWithProgress(ctx, "abc", func(context.Context) (string, error) { return "transfer", nil }, func(state string) { progress = append(progress, state) }); err != nil {
 		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(progress, []string{"ReadyToConnect", "Provisioned"}) {
+		t.Fatal(progress)
 	}
 	if !connected {
 		t.Fatal("missing connect")

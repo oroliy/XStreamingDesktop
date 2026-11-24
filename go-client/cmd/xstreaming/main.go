@@ -524,6 +524,25 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	}
 	s, err := session.Start(ctx, client, session.Options{Play: streaming.PlayOptions{Target: target, Resolution: prefs.ResolutionCode(), Locale: prefs.Language}, TransferToken: func(ctx context.Context) (string, error) {
 		return credentials.Transfer(ctx)
+	}, OnProgress: func(state string) {
+		var text string
+		switch state {
+		case "Provisioning":
+			text = "Preparing stream…"
+		case "WaitingForResources":
+			text = "Waiting for available capacity…"
+		case "ReadyToConnect":
+			text = "Authorizing connection…"
+		case "Provisioned", "Negotiating":
+			text = "Negotiating connection…"
+		default:
+			return
+		}
+		a.update(func() {
+			if ctx.Err() == nil && a.busy && a.streamCancel != nil {
+				a.status = text
+			}
+		})
 	}, RTC: webrtc.Configuration{ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:worldaz.relay.teams.microsoft.com:3478"}}}}, OnTrack: track, OnError: onError, PreferIPv6: prefs.PreferIPv6, OnConnectionState: func(state webrtc.PeerConnectionState) {
 		if ctx.Err() != nil {
 			return
@@ -573,7 +592,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	a.update(func() {
 		if ctx.Err() == nil {
 			a.busy = false
-			if a.status == "Starting stream…" || a.status == "Starting cloud game…" {
+			if a.status == "Starting stream…" || a.status == "Starting cloud game…" || a.status == "Preparing stream…" || a.status == "Waiting for available capacity…" || a.status == "Authorizing connection…" || a.status == "Negotiating connection…" {
 				a.status = "Negotiation complete; waiting for connection…"
 			}
 		}
