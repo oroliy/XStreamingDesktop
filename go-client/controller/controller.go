@@ -44,15 +44,18 @@ func ApplyDeadzone(x, y, deadzone float64) (float64, float64) {
 	return x * scale, y * scale
 }
 
-// Run sends up to four connected controllers at 60Hz until ctx is canceled.
+// Run sends up to four connected controllers until ctx is canceled.
 // On disconnect it sends a neutral frame to release held buttons.
-func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChannel, ready <-chan struct{}, keyboard *Keyboard, deadzone float64) error {
+func Run(ctx context.Context, sender *peer.InputSender, channel *webrtc.DataChannel, ready <-chan struct{}, keyboard *Keyboard, deadzone float64, pollingRate int) error {
 	select {
 	case <-ctx.Done():
 		return nil
 	case <-ready:
 	}
-	ticker := time.NewTicker(time.Second / 60)
+	if pollingRate != 60 && pollingRate != 125 && pollingRate != 250 {
+		pollingRate = 60
+	}
+	ticker := time.NewTicker(time.Second / time.Duration(pollingRate))
 	defer ticker.Stop()
 	initialized := false
 	slots := slotTracker{}

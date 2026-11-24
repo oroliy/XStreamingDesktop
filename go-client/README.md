@@ -1,6 +1,6 @@
 # Go client (early development)
 
-This directory contains an early MyGo migration. The native window is an experimental preview that can initiate home and cloud streaming and display decoded H.264 frames. It reads up to four gamepads with an adjustable stick dead zone; vibration and other existing features are not implemented. Input, audio and video have not been validated with a real Xbox. Use the original Electron application for streaming.
+This directory contains an early MyGo migration. The native window is an experimental preview that can initiate home and cloud streaming and display decoded H.264 frames. It reads up to four gamepads with adjustable stick dead zone and polling rate; vibration and other existing features are not implemented. Input, audio and video have not been validated with a real Xbox. Use the original Electron application for streaming.
 
 [中文说明](README.zh_CN.md)
 
@@ -17,7 +17,7 @@ The `peer` package provides a Pion WebRTC peer with audio/video transceivers and
 
 The experimental `media` package can depacketize H.264 RTP and decode H.264 video frames using an `ffmpeg` executable on PATH. The preview UI uses this decoder; it uses software decoding and has not been benchmarked for streaming latency. Opus audio uses `ffplay` and an available audio device; audio/video synchronization and latency have not been validated.
 
-The preview reads up to four controllers through MyGo’s gamepad plugin. Linux requires permission to read the relevant `/dev/input` device. Rumble is not yet supported.
+The preview reads up to four controllers through MyGo’s gamepad plugin. Linux requires permission to read the relevant `/dev/input` device. Polling-rate changes apply to the next stream; higher rates increase processing and network activity. Rumble is not yet supported.
 
 Cloud catalog market and language and streaming resolution are configurable in the preview. The catalog reloads automatically after changing market or language. If catalog lookup fails, the preview displays product IDs. Cloud access depends on account entitlements and region.
 

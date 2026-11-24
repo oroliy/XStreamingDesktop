@@ -16,6 +16,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 	s.Resolution = "1080p HQ"
 	s.Language = "zh-TW"
 	s.StickDeadzone = 25
+	s.PollingRate = "250 Hz"
 	if err = Save(p, s); err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +36,7 @@ func TestLegacySettingsGainDefaultVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := Load(p)
-	if err != nil || got.Volume != 100 || got.StickDeadzone != 10 || got.ResolutionCode() != 720 || got.UILanguage != "English" {
+	if err != nil || got.Volume != 100 || got.StickDeadzone != 10 || got.PollingRate != "60 Hz" || got.ResolutionCode() != 720 || got.UILanguage != "English" {
 		t.Fatal(got, err)
 	}
 	got.Volume = 101
@@ -51,5 +52,19 @@ func TestInvalidStickDeadzone(t *testing.T) {
 		if s.Validate() == nil {
 			t.Errorf("accepted %v", value)
 		}
+	}
+}
+
+func TestPollingRateValidation(t *testing.T) {
+	s := Defaults()
+	for value, expected := range map[string]int{"60 Hz": 60, "125 Hz": 125, "250 Hz": 250} {
+		s.PollingRate = value
+		if err := s.Validate(); err != nil || s.PollingRateHz() != expected {
+			t.Fatalf("%s: %v", value, err)
+		}
+	}
+	s.PollingRate = "10000 Hz"
+	if s.Validate() == nil {
+		t.Fatal("accepted invalid polling rate")
 	}
 }
