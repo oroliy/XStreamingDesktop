@@ -145,6 +145,13 @@ func (a *app) view(c *ui.Context) {
 		}
 		ui.Scroll(c.Key("library")).Grow(1).Width(680).Gap(8).Children(func() {
 			ui.Text(c, "Consoles").Bold()
+			if a.credentials != nil && !a.busy && a.streamCancel == nil {
+				if ui.Button(c.Key("refresh-consoles"), "Refresh consoles").Clicked() {
+					a.busy = true
+					a.status = "Refreshing consoles…"
+					go a.refreshConsoles(a.accountCtx, a.credentials, a.client)
+				}
+			}
 			for _, console := range a.consoles {
 				ui.Text(c, fmt.Sprintf("%s (%s) — %s", console.Name, console.ConsoleType, console.PowerState))
 				if !a.busy && a.streamCancel == nil && console.ServerID != "" {
@@ -274,16 +281,7 @@ func (a *app) connectAccount(ctx context.Context, refresh string, prefs settings
 		})
 	})
 
-	token, region, homeErr := credentials.StreamingToken(ctx, "home")
-	var client *streaming.Client
-	var consoles []streaming.Console
-	if homeErr == nil {
-		client, homeErr = streaming.NewClient(region, token, "home", nil)
-		if homeErr == nil {
-			client.SetRefresh(func(ctx context.Context) (string, string, error) { return credentials.StreamingToken(ctx, "home") })
-			consoles, homeErr = client.Consoles(ctx)
-		}
-	}
+	client, consoles, homeErr := fetchHome(ctx, nil, func(ctx context.Context) (string, string, error) { return credentials.StreamingToken(ctx, "home") })
 	if ctx.Err() != nil {
 		return
 	}
@@ -306,6 +304,42 @@ func (a *app) connectAccount(ctx context.Context, refresh string, prefs settings
 		}
 	})
 	go a.loadCloud(ctx, credentials, prefs)
+}
+
+// fetchHome uses the existing regional client, or acquires one on first use.
+func fetchHome(ctx context.Context, client *streaming.Client, token func(context.Context) (string, string, error)) (*streaming.Client, []streaming.Console, error) {
+	if client == nil {
+		value, region, err := token(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		client, err = streaming.NewClient(region, value, "home", nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		client.SetRefresh(token)
+	}
+	consoles, err := client.Consoles(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	return client, consoles, nil
+}
+func (a *app) refreshConsoles(ctx context.Context, credentials *auth.Session, client *streaming.Client) {
+	client, consoles, err := fetchHome(ctx, client, func(ctx context.Context) (string, string, error) { return credentials.StreamingToken(ctx, "home") })
+	a.update(func() {
+		if ctx.Err() != nil {
+			return
+		}
+		a.busy = false
+		if err != nil {
+			a.status = "Unable to refresh consoles: " + err.Error()
+			return
+		}
+		a.client = client
+		a.consoles = consoles
+		a.status = fmt.Sprintf("Found %d console(s).", len(consoles))
+	})
 }
 func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs settings.Settings) {
 	generation := a.cloudGeneration.Add(1)

@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"github.com/egoist/mygo/ui"
 	"github.com/oroliy/XStreamingDesktop/go-client/auth"
 	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
 	"github.com/oroliy/XStreamingDesktop/go-client/settings"
 	"github.com/oroliy/XStreamingDesktop/go-client/streaming"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 )
@@ -105,5 +108,34 @@ func TestIPv6PreferencePersists(t *testing.T) {
 	saved, err := settings.Load(path)
 	if err != nil || !saved.PreferIPv6 {
 		t.Fatal(saved, err)
+	}
+}
+
+func TestFetchHomeInitialAndRefresh(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/v6/servers/home" || r.Header.Get("Authorization") != "Bearer test" {
+			t.Error("invalid console request")
+		}
+		_, _ = w.Write([]byte(`{"results":[{"serverId":"id","deviceName":"Xbox","powerState":"On"}]}`))
+	}))
+	defer server.Close()
+	tokens := 0
+	provider := func(context.Context) (string, string, error) { tokens++; return "test", server.URL, nil }
+	c, first, err := fetchHome(context.Background(), nil, provider)
+	if err != nil || len(first) != 1 || first[0].PowerState != "On" {
+		t.Fatal(first, err)
+	}
+	_, second, err := fetchHome(context.Background(), c, provider)
+	if err != nil || len(second) != 1 || calls != 2 || tokens != 1 {
+		t.Fatalf("calls=%d tokens=%d error=%v", calls, tokens, err)
+	}
+}
+func TestFetchHomeTokenError(t *testing.T) {
+	sentinel := errors.New("no token")
+	_, _, err := fetchHome(context.Background(), nil, func(context.Context) (string, string, error) { return "", "", sentinel })
+	if !errors.Is(err, sentinel) {
+		t.Fatal(err)
 	}
 }
