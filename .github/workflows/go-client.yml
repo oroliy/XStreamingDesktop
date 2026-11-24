@@ -60,8 +60,12 @@ jobs:
             exit 1
           fi
           XSTREAMING_TEST_PULSE_SERVER="unix:$pulse_dir/runtime/native" go test -race ./media ./session -run '^(TestEncodeMicrophoneFromVirtualPulseAudio|TestPulseSourcesWithVirtualServer|TestSessionNegotiationAndCleanup)$' -count=1
-  windows-test:
-    runs-on: windows-latest
+  native-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     defaults:
       run:
@@ -72,7 +76,7 @@ jobs:
         with:
           go-version-file: go-client/go.mod
           cache-dependency-path: go-client/go.sum
-      - name: Run Windows tests
+      - name: Run native tests
         run: go test ./...
   cross-build:
     runs-on: ubuntu-latest
