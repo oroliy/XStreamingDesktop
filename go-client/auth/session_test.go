@@ -44,3 +44,30 @@ func TestSessionRotatesRefreshToken(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+type memoryStore struct {
+	value   string
+	deletes int
+}
+
+func (m *memoryStore) Save(v string) error { m.value = v; return nil }
+func (m *memoryStore) Delete() error       { m.value = ""; m.deletes++; return nil }
+func TestSessionCredentialStorage(t *testing.T) {
+	s := NewSession("initial")
+	store := &memoryStore{}
+	if err := s.SetStore(store, nil); err != nil || store.value != "initial" {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.rotate("rotated")
+	s.mu.Unlock()
+	if store.value != "rotated" {
+		t.Fatal("rotation not persisted")
+	}
+	if err := s.Logout(); err != nil || store.value != "" || store.deletes != 1 {
+		t.Fatal(err)
+	}
+	if _, err := s.Transfer(context.Background()); err == nil {
+		t.Fatal("logged out session accepted refresh")
+	}
+}

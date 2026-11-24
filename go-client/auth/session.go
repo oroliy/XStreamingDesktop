@@ -8,14 +8,61 @@ import (
 
 // Session serializes refresh-token rotation across home, cloud and transfer requests.
 type Session struct {
-	mu        sync.Mutex
-	microsoft *Client
-	xbox      *XboxClient
-	refresh   string
+	mu         sync.Mutex
+	microsoft  *Client
+	xbox       *XboxClient
+	refresh    string
+	store      TokenStore
+	storeError func(error)
+	closed     bool
 }
 
 func NewSession(refresh string) *Session {
 	return &Session{microsoft: NewClient(), xbox: NewXboxClient(), refresh: refresh}
+}
+
+// TokenStore holds only the refresh token in a system credential store.
+type TokenStore interface {
+	Save(string) error
+	Delete() error
+}
+
+// SetStore saves the current token and persists future token rotation.
+func (s *Session) SetStore(store TokenStore, onError func(error)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return errors.New("session closed")
+	}
+	s.store = store
+	s.storeError = onError
+	if store == nil || s.refresh == "" {
+		return nil
+	}
+	return store.Save(s.refresh)
+}
+func (s *Session) rotate(refresh string) {
+	if refresh == "" {
+		return
+	}
+	s.refresh = refresh
+	if s.store != nil {
+		if err := s.store.Save(refresh); err != nil && s.storeError != nil {
+			s.storeError(err)
+		}
+	}
+}
+
+// Logout prevents further token refresh and removes the persisted credential.
+func (s *Session) Logout() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
+	s.refresh = ""
+	if s.store != nil {
+		return s.store.Delete()
+	}
+	return nil
 }
 func (s *Session) Transfer(ctx context.Context) (string, error) {
 	s.mu.Lock()
@@ -28,7 +75,7 @@ func (s *Session) Transfer(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if token.RefreshToken != "" {
-		s.refresh = token.RefreshToken
+		s.rotate(token.RefreshToken)
 	}
 	return token.AccessToken, nil
 }
@@ -45,7 +92,7 @@ func (s *Session) StreamingToken(ctx context.Context, kind string) (string, stri
 		return "", "", err
 	}
 	if token.RefreshToken != "" {
-		s.refresh = token.RefreshToken
+		s.rotate(token.RefreshToken)
 	}
 	user, err := s.xbox.UserToken(ctx, token.AccessToken)
 	if err != nil {

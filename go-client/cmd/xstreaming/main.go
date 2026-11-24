@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"log"
@@ -32,6 +33,8 @@ type app struct {
 	titles            []streaming.Title
 	cloudStatus       string
 	credentials       *auth.Session
+	accountCtx        context.Context
+	accountCancel     context.CancelFunc
 	streamCancel      context.CancelFunc
 	frame             *ui.Bitmap
 	framePending      atomic.Bool
@@ -64,7 +67,34 @@ func (a *app) view(c *ui.Context) {
 			if ui.PrimaryButton(c, "Sign in with Microsoft").Clicked() {
 				a.busy = true
 				a.status = "Requesting sign-in code…"
-				go a.signIn()
+				ctx, cancel := context.WithCancel(a.ctx)
+				a.accountCtx = ctx
+				a.accountCancel = cancel
+				go a.signIn(ctx)
+			}
+		}
+		if a.credentials != nil && !a.busy && a.streamCancel == nil {
+			if ui.Button(c.Key("signout"), "Sign out").Clicked() {
+				a.busy = true
+				a.status = "Signing out…"
+				a.accountCancel()
+				credentials := a.credentials
+				go func() {
+					err := credentials.Logout()
+					a.update(func() {
+						a.busy = false
+						a.client = nil
+						a.cloud = nil
+						a.credentials = nil
+						a.consoles = nil
+						a.titles = nil
+						a.cloudStatus = ""
+						a.status = "Signed out."
+						if err != nil {
+							a.status = "Signed out locally; unable to remove saved login: " + err.Error()
+						}
+					})
+				}()
 			}
 		}
 		ui.Scroll(c.Key("library")).Grow(1).Width(680).Gap(8).Children(func() {
@@ -107,93 +137,124 @@ func (a *app) update(fn func()) { a.win.Update(fn) }
 func (a *app) fail(err error) {
 	a.update(func() { a.busy = false; a.code = ""; a.uri = ""; a.status = "Sign-in failed: " + err.Error() })
 }
-func (a *app) signIn() {
+
+type secretStore struct{}
+
+const tokenKey = "microsoft-refresh-token"
+
+func (secretStore) Save(token string) error {
+	return mygo.Secrets.Service("XStreamingDesktop-Go").Set(tokenKey, []byte(token))
+}
+func (secretStore) Delete() error {
+	return mygo.Secrets.Service("XStreamingDesktop-Go").Delete(tokenKey)
+}
+func (a *app) signIn(ctx context.Context) {
 	microsoft := auth.NewClient()
-	code, err := microsoft.Start(a.ctx)
+	code, err := microsoft.Start(ctx)
 	if err != nil {
 		a.fail(err)
 		return
 	}
 	a.update(func() {
-		a.code = code.UserCode
-		a.uri = code.VerificationURI
-		a.status = "Complete sign-in in your browser."
+		if ctx.Err() == nil {
+			a.code = code.UserCode
+			a.uri = code.VerificationURI
+			a.status = "Complete sign-in in your browser."
+		}
 	})
-	token, err := microsoft.Poll(a.ctx, code)
+	token, err := microsoft.Poll(ctx, code)
 	if err != nil {
-		a.fail(err)
+		if ctx.Err() == nil {
+			a.fail(err)
+		}
 		return
 	}
-	a.update(func() { a.code = ""; a.uri = ""; a.status = "Connecting to Xbox…" })
-	xbox := auth.NewXboxClient()
-	user, err := xbox.UserToken(a.ctx, token.AccessToken)
+	a.connectAccount(ctx, token.RefreshToken)
+}
+func (a *app) connectAccount(ctx context.Context, refresh string) {
+	a.update(func() {
+		if ctx.Err() == nil {
+			a.code = ""
+			a.uri = ""
+			a.status = "Connecting to Xbox…"
+		}
+	})
+	credentials := auth.NewSession(refresh)
+	persistErr := credentials.SetStore(secretStore{}, func(error) {
+		a.update(func() {
+			if ctx.Err() == nil {
+				a.status = "Unable to save renewed login; sign in may be required next time."
+			}
+		})
+	})
+	token, region, err := credentials.StreamingToken(ctx, "home")
 	if err != nil {
-		a.fail(err)
+		if ctx.Err() == nil {
+			a.fail(err)
+		}
 		return
 	}
-	xsts, err := xbox.XSTS(a.ctx, user.Token, "http://gssv.xboxlive.com/")
+	client, err := streaming.NewClient(region, token, "home", nil)
 	if err != nil {
-		a.fail(err)
+		if ctx.Err() == nil {
+			a.fail(err)
+		}
 		return
 	}
-	home, err := xbox.Streaming(a.ctx, xsts.Token, "xhome")
-	if err != nil {
-		a.fail(err)
-		return
-	}
-	region, err := home.DefaultRegion()
-	if err != nil {
-		a.fail(err)
-		return
-	}
-	client, err := streaming.NewClient(region.BaseURI, home.GSToken, "home", nil)
-	if err != nil {
-		a.fail(err)
-		return
-	}
-	credentials := auth.NewSession(token.RefreshToken)
 	client.SetRefresh(func(ctx context.Context) (string, string, error) { return credentials.StreamingToken(ctx, "home") })
-	consoles, err := client.Consoles(a.ctx)
+	consoles, err := client.Consoles(ctx)
 	if err != nil {
-		a.fail(err)
+		if ctx.Err() == nil {
+			a.fail(err)
+		}
 		return
 	}
 	a.update(func() {
+		if ctx.Err() != nil {
+			return
+		}
 		a.busy = false
 		a.client = client
 		a.credentials = credentials
 		a.consoles = consoles
 		a.status = fmt.Sprintf("Signed in. Found %d console(s).", len(consoles))
+		if persistErr != nil {
+			a.status += " Login could not be saved in the system credential store."
+		}
 		a.cloudStatus = "Loading cloud games…"
 	})
-	go a.loadCloud(xbox, xsts.Token, credentials)
+	go a.loadCloud(ctx, credentials)
 }
-func (a *app) loadCloud(xbox *auth.XboxClient, token string, credentials *auth.Session) {
-	cloud, err := xbox.Streaming(a.ctx, token, "xgpuweb")
+func (a *app) loadCloud(ctx context.Context, credentials *auth.Session) {
+	token, region, err := credentials.StreamingToken(ctx, "cloud")
 	if err != nil {
-		cloud, err = xbox.Streaming(a.ctx, token, "xgpuwebf2p")
-	}
-	if err != nil {
-		a.update(func() { a.cloudStatus = "Cloud games unavailable for this account or region." })
+		a.update(func() {
+			if ctx.Err() == nil {
+				a.cloudStatus = "Cloud games unavailable for this account or region."
+			}
+		})
 		return
 	}
-	region, err := cloud.DefaultRegion()
+	client, err := streaming.NewClient(region, token, "cloud", nil)
 	if err != nil {
-		a.update(func() { a.cloudStatus = "Cloud region unavailable." })
-		return
-	}
-	client, err := streaming.NewClient(region.BaseURI, cloud.GSToken, "cloud", nil)
-	if err != nil {
-		a.update(func() { a.cloudStatus = "Invalid cloud service region." })
+		a.update(func() {
+			if ctx.Err() == nil {
+				a.cloudStatus = "Invalid cloud service region."
+			}
+		})
 		return
 	}
 	client.SetRefresh(func(ctx context.Context) (string, string, error) { return credentials.StreamingToken(ctx, "cloud") })
-	titles, err := client.Titles(a.ctx)
+	titles, err := client.Titles(ctx)
 	if err != nil {
-		a.update(func() { a.cloudStatus = "Unable to load cloud games." })
+		a.update(func() {
+			if ctx.Err() == nil {
+				a.cloudStatus = "Unable to load cloud games."
+			}
+		})
 		return
 	}
-	names, err := catalog.NewClient().Resolve(a.ctx, titles, "US", "en-US")
+	names, err := catalog.NewClient().Resolve(ctx, titles, "US", "en-US")
 	if err != nil {
 		names = titles
 		for i := range names {
@@ -203,7 +264,27 @@ func (a *app) loadCloud(xbox *auth.XboxClient, token string, credentials *auth.S
 			}
 		}
 	}
-	a.update(func() { a.cloud = client; a.titles = names; a.cloudStatus = fmt.Sprintf("%d games", len(names)) })
+	a.update(func() {
+		if ctx.Err() == nil {
+			a.cloud = client
+			a.titles = names
+			a.cloudStatus = fmt.Sprintf("%d games", len(names))
+		}
+	})
+}
+func (a *app) restore() {
+	token, err := mygo.Secrets.Service("XStreamingDesktop-Go").Get(tokenKey)
+	if err != nil || len(token) == 0 {
+		a.update(func() {
+			a.busy = false
+			if err != nil && !errors.Is(err, mygo.ErrSecretNotFound) {
+				a.status = "System credential store unavailable; sign in manually."
+			}
+		})
+		return
+	}
+	a.update(func() { a.status = "Restoring sign-in…" })
+	a.connectAccount(a.accountCtx, string(token))
 }
 func (a *app) startStream(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string) {
 	onError := func(err error) {
@@ -303,9 +384,11 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 func main() {
 	mygo.App.WhenReady(func() {
 		ctx, cancel := context.WithCancel(context.Background())
-		a := &app{ctx: ctx, cancel: cancel}
+		accountCtx, accountCancel := context.WithCancel(ctx)
+		a := &app{ctx: ctx, cancel: cancel, accountCtx: accountCtx, accountCancel: accountCancel, busy: true}
 		a.win = mygo.NewWindow(mygo.WindowOptions{Title: "XStreaming (Go preview)", Content: ui.View(a.view)})
 		a.win.OnClosed(a.cancel)
+		go a.restore()
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
