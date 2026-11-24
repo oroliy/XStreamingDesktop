@@ -19,6 +19,7 @@ type Session struct {
 	peer     *peer.Peer
 	id       string
 	cancel   context.CancelFunc
+	done     <-chan struct{}
 	once     sync.Once
 	closeErr error
 }
@@ -33,7 +34,8 @@ type Options struct {
 }
 
 // Start creates and provisions a session, negotiates SDP and exchanges ICE.
-// The caller must call Close even after the supplied context is cancelled.
+// The session closes automatically when ctx is canceled or the connection fails.
+// Close may also be called explicitly to wait for cleanup.
 func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Session, err error) {
 	result, err := client.Start(ctx, opts.Play)
 	if err != nil {
@@ -44,7 +46,7 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 		return nil, err
 	}
 	live, cancel := context.WithCancel(ctx)
-	s := &Session{client: client, id: id, cancel: cancel}
+	s := &Session{client: client, id: id, cancel: cancel, done: live.Done()}
 	defer func() {
 		if err != nil {
 			_ = s.Close()
@@ -57,9 +59,14 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 	if err != nil {
 		return nil, err
 	}
-	if opts.OnConnectionState != nil {
-		s.peer.OnConnectionStateChange(opts.OnConnectionState)
-	}
+	s.peer.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		if opts.OnConnectionState != nil {
+			opts.OnConnectionState(state)
+		}
+		if state == webrtc.PeerConnectionStateFailed {
+			cancel()
+		}
+	})
 	s.peer.StartControl(live, opts.OnError)
 	offer, err := s.peer.Offer(live)
 	if err != nil {
@@ -117,8 +124,10 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 			}
 		}
 	}()
+	go func() { <-live.Done(); _ = s.Close() }()
 	return s, nil
 }
+func (s *Session) Done() <-chan struct{}             { return s.done }
 func (s *Session) Ready() <-chan struct{}            { return s.peer.Ready() }
 func (s *Session) InputChannel() *webrtc.DataChannel { return s.peer.Channel("input") }
 func (s *Session) Input() *peer.InputSender          { return s.peer.Input() }

@@ -21,6 +21,7 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 	defer remote.Close()
 	var answer string
 	var stopped atomic.Int32
+	stoppedSignal := make(chan struct{}, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/v5/sessions/home/play":
@@ -61,6 +62,10 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 			fmt.Fprint(w, `{"exchangeResponse":"[]"}`)
 		case r.URL.Path == "/v5/sessions/home/abc" && r.Method == "DELETE":
 			stopped.Add(1)
+			select {
+			case stoppedSignal <- struct{}{}:
+			default:
+			}
 			w.WriteHeader(204)
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
@@ -90,6 +95,12 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 	case <-connected:
 	case <-ctx.Done():
 		t.Fatal("connection state did not reach connected")
+	}
+	cancel()
+	select {
+	case <-stoppedSignal:
+	case <-time.After(3 * time.Second):
+		t.Fatal("session not stopped after context cancellation")
 	}
 	if err = s.Close(); err != nil {
 		t.Fatal(err)

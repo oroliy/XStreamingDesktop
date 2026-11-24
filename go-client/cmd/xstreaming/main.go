@@ -310,6 +310,8 @@ func (a *app) restore(prefs settings.Settings) {
 	a.connectAccount(a.accountCtx, string(token), prefs)
 }
 func (a *app) startStream(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	onError := func(err error) {
 		if ctx.Err() == nil {
 			a.update(func() {
@@ -391,7 +393,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		case webrtc.PeerConnectionStateFailed:
 			a.update(func() {
 				if ctx.Err() == nil {
-					a.status = "Connection failed; stop and retry."
+					a.status = "Connection failed; cleaning up…"
 				}
 			})
 		}
@@ -421,11 +423,19 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 			}
 		}
 	})
-	<-ctx.Done()
+	select {
+	case <-ctx.Done():
+	case <-s.Done():
+	}
+	failed := ctx.Err() == nil
 	_ = s.Close()
 	a.update(func() {
-		if a.streamCancel == nil {
-			a.busy = false
+		a.busy = false
+		a.streamCancel = nil
+		a.frame = nil
+		if failed {
+			a.status = "Connection failed; please retry."
+		} else {
 			a.status = "Stream stopped."
 		}
 	})
