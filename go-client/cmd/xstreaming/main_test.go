@@ -185,3 +185,18 @@ func TestVerificationPageButton(t *testing.T) {
 		}
 	}
 }
+
+func TestCancelSignIn(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	a := &app{busy: true, accountCtx: ctx, accountCancel: cancel, code: "ABCD", uri: "https://microsoft.com/devicelogin"}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if err := tt.Click("Cancel sign-in"); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(ctx.Err(), context.Canceled) || !a.cancelingLogin || !a.busy || a.code != "" || a.uri != "" {
+		t.Fatalf("cancel failed: %+v", a)
+	}
+	if tt.HasText("Sign in with Microsoft") {
+		t.Fatal("new sign-in allowed before cancellation finished")
+	}
+}

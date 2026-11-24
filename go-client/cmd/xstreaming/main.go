@@ -30,6 +30,7 @@ type app struct {
 	ctx               context.Context
 	cancel            context.CancelFunc
 	busy              bool
+	cancelingLogin    bool
 	status, code, uri string
 	consoles          []streaming.Console
 	client            *streaming.Client
@@ -94,6 +95,15 @@ func (a *app) view(c *ui.Context) {
 						}
 					})
 				}
+			}
+		}
+		if a.busy && a.credentials == nil && a.accountCancel != nil && !a.cancelingLogin {
+			if ui.Button(c.Key("cancel-login"), "Cancel sign-in").Clicked() {
+				a.cancelingLogin = true
+				a.accountCancel()
+				a.code = ""
+				a.uri = ""
+				a.status = "Canceling sign-in…"
 			}
 		}
 		if a.streamCancel != nil {
@@ -253,8 +263,29 @@ func verificationURLAllowed(raw string) bool {
 	return false
 }
 func (a *app) update(fn func()) { a.win.Update(fn) }
-func (a *app) fail(err error) {
-	a.update(func() { a.busy = false; a.code = ""; a.uri = ""; a.status = "Sign-in failed: " + err.Error() })
+func (a *app) fail(ctx context.Context, err error) {
+	a.update(func() {
+		if ctx.Err() == nil {
+			a.busy = false
+			a.code = ""
+			a.uri = ""
+			a.status = "Sign-in failed: " + err.Error()
+		}
+	})
+}
+func (a *app) finishCanceledLogin(ctx context.Context) {
+	if ctx.Err() == nil {
+		return
+	}
+	a.update(func() {
+		if a.accountCtx == ctx && a.cancelingLogin {
+			a.busy = false
+			a.cancelingLogin = false
+			a.code = ""
+			a.uri = ""
+			a.status = "Sign-in canceled."
+		}
+	})
 }
 
 type secretStore struct{}
@@ -268,10 +299,11 @@ func (secretStore) Delete() error {
 	return mygo.Secrets.Service("XStreamingDesktop-Go").Delete(tokenKey)
 }
 func (a *app) signIn(ctx context.Context, prefs settings.Settings) {
+	defer a.finishCanceledLogin(ctx)
 	microsoft := auth.NewClient()
 	code, err := microsoft.Start(ctx)
 	if err != nil {
-		a.fail(err)
+		a.fail(ctx, err)
 		return
 	}
 	a.update(func() {
@@ -284,8 +316,11 @@ func (a *app) signIn(ctx context.Context, prefs settings.Settings) {
 	token, err := microsoft.Poll(ctx, code)
 	if err != nil {
 		if ctx.Err() == nil {
-			a.fail(err)
+			a.fail(ctx, err)
 		}
+		return
+	}
+	if ctx.Err() != nil {
 		return
 	}
 	a.connectAccount(ctx, token.RefreshToken, prefs)
@@ -298,6 +333,9 @@ func (a *app) connectAccount(ctx context.Context, refresh string, prefs settings
 			a.status = "Connecting to Xbox…"
 		}
 	})
+	if ctx.Err() != nil {
+		return
+	}
 	credentials := auth.NewSession(refresh)
 	persistErr := credentials.SetStore(secretStore{}, func(error) {
 		a.update(func() {
@@ -429,10 +467,14 @@ func playableTitles(titles []streaming.Title) []streaming.Title {
 	}
 	return out
 }
-func (a *app) restore(prefs settings.Settings) {
+func (a *app) restore(ctx context.Context, prefs settings.Settings) {
+	defer a.finishCanceledLogin(ctx)
 	token, err := mygo.Secrets.Service("XStreamingDesktop-Go").Get(tokenKey)
 	if err != nil || len(token) == 0 {
 		a.update(func() {
+			if ctx.Err() != nil {
+				return
+			}
 			a.busy = false
 			if err != nil && !errors.Is(err, mygo.ErrSecretNotFound) {
 				a.status = "System credential store unavailable; sign in manually."
@@ -440,8 +482,15 @@ func (a *app) restore(prefs settings.Settings) {
 		})
 		return
 	}
-	a.update(func() { a.status = "Restoring sign-in…" })
-	a.connectAccount(a.accountCtx, string(token), prefs)
+	if ctx.Err() != nil {
+		return
+	}
+	a.update(func() {
+		if ctx.Err() == nil {
+			a.status = "Restoring sign-in…"
+		}
+	})
+	a.connectAccount(ctx, string(token), prefs)
 }
 func (a *app) wakeConsole(ctx context.Context, credentials *auth.Session, id string) {
 	token, err := credentials.WebToken(ctx)
@@ -674,7 +723,7 @@ func main() {
 		a.win.OnEnterFullScreen(func() { a.fullscreen = true; a.win.Invalidate() })
 		a.win.OnLeaveFullScreen(func() { a.fullscreen = false; a.win.Invalidate() })
 		a.win.OnClosed(a.cancel)
-		go a.restore(prefs)
+		go a.restore(accountCtx, prefs)
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
