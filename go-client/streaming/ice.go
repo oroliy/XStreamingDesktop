@@ -60,12 +60,13 @@ func (c ICECandidate) MarshalJSON() ([]byte, error) {
 }
 
 type parsedCandidate struct {
-	ip   netip.Addr
-	port string
-	rest string
+	ip        netip.Addr
+	candidate ICECandidate
+	fields    []string
 }
 
-// NormalizeICE applies the original client's Teredo, IPv6 preference and priority rules.
+// NormalizeICE retains candidate transport and media identity while applying
+// the original client's Teredo, IPv6 preference and priority rules.
 func NormalizeICE(input []ICECandidate, preferIPv6 bool) ([]ICECandidate, error) {
 	var parsed []parsedCandidate
 	for _, item := range input {
@@ -84,16 +85,27 @@ func NormalizeICE(input []ICECandidate, preferIPv6 bool) ([]ICECandidate, error)
 		if err != nil || port == 0 {
 			return nil, fmt.Errorf("invalid ICE port")
 		}
-		rest := strings.Join(fields[6:], " ")
-		if ip.Is6() {
+		if item.SDPMLineIndex == "" {
+			item.SDPMLineIndex = "0"
+		}
+		if item.SDPMid == "" && item.SDPMLineIndex == "0" {
+			item.SDPMid = "0"
+		}
+		if ip.Is6() && strings.EqualFold(fields[2], "udp") {
 			a := ip.As16()
 			if a[0] == 0x20 && a[1] == 0x01 && a[2] == 0 && a[3] == 0 {
 				v4 := netip.AddrFrom4([4]byte{^a[12], ^a[13], ^a[14], ^a[15]})
 				teredoPort := uint16(^a[10])<<8 | uint16(^a[11])
-				parsed = append(parsed, parsedCandidate{v4, "9002", "typ host"}, parsedCandidate{v4, strconv.Itoa(int(teredoPort)), "typ host"})
+				for _, syntheticPort := range []uint16{9002, teredoPort} {
+					if syntheticPort == 0 {
+						continue
+					}
+					synthetic := []string{fmt.Sprintf("candidate:td%d", len(parsed)), fields[1], "UDP", "1", v4.String(), strconv.Itoa(int(syntheticPort)), "typ", "host"}
+					parsed = append(parsed, parsedCandidate{v4, item, synthetic})
+				}
 			}
 		}
-		parsed = append(parsed, parsedCandidate{ip, fields[5], rest})
+		parsed = append(parsed, parsedCandidate{ip, item, fields})
 	}
 	if preferIPv6 {
 		sort.SliceStable(parsed, func(i, j int) bool { return parsed[i].ip.Is6() && !parsed[j].ip.Is6() })
@@ -104,7 +116,12 @@ func NormalizeICE(input []ICECandidate, preferIPv6 bool) ([]ICECandidate, error)
 		if i == 0 {
 			priority = 2130706431
 		}
-		result = append(result, ICECandidate{Candidate: fmt.Sprintf("a=candidate:%d 1 UDP %d %s %s %s", i+1, priority, item.ip, item.port, item.rest), MessageType: "iceCandidate", SDPMLineIndex: "0", SDPMid: "0"})
+		item.fields[3] = strconv.Itoa(priority)
+		item.candidate.Candidate = "a=" + strings.Join(item.fields, " ")
+		if item.candidate.MessageType == "" {
+			item.candidate.MessageType = "iceCandidate"
+		}
+		result = append(result, item.candidate)
 	}
 	return append(result, ICECandidate{Candidate: "a=end-of-candidates", MessageType: "iceCandidate", SDPMLineIndex: "0", SDPMid: "0"}), nil
 }

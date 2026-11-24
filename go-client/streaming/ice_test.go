@@ -45,3 +45,42 @@ func TestICECandidateJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeICEPreservesTransportAndMedia(t *testing.T) {
+	in := []ICECandidate{{Candidate: "candidate:abc 2 TCP 123 192.0.2.1 4444 typ relay tcptype passive raddr 192.0.2.5 rport 1234", SDPMid: "video", SDPMLineIndex: "2", MessageType: "iceCandidate"}}
+	got, err := NormalizeICE(in, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].SDPMid != "video" || got[0].SDPMLineIndex != "2" || got[0].Candidate != "a=candidate:abc 2 TCP 2130706431 192.0.2.1 4444 typ relay tcptype passive raddr 192.0.2.5 rport 1234" {
+		t.Fatalf("candidate changed: %+v", got)
+	}
+}
+
+func TestTeredoCandidatesRetainMedia(t *testing.T) {
+	in := []ICECandidate{{Candidate: "candidate:2 1 UDP 10 2001:0:4136:e378:8000:63bf:3fff:fdd2 4567 typ host", SDPMid: "audio", SDPMLineIndex: "1"}}
+	got, err := NormalizeICE(in, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range got[:len(got)-1] {
+		if item.SDPMid != "audio" || item.SDPMLineIndex != "1" {
+			t.Fatalf("lost media identity: %+v", item)
+		}
+	}
+}
+
+func TestNormalizeICEKeepsMissingMidForNonzeroLine(t *testing.T) {
+	got, err := NormalizeICE([]ICECandidate{{Candidate: "candidate:1 1 UDP 10 192.0.2.1 4444 typ host", SDPMLineIndex: "2"}}, false)
+	if err != nil || got[0].SDPMid != "" || got[0].SDPMLineIndex != "2" {
+		t.Fatalf("candidate=%+v error=%v", got, err)
+	}
+}
+
+func TestTeredoTCPDoesNotInventUDPCandidates(t *testing.T) {
+	in := []ICECandidate{{Candidate: "candidate:2 1 TCP 10 2001:0:4136:e378:8000:63bf:3fff:fdd2 4567 typ host tcptype passive"}}
+	got, err := NormalizeICE(in, false)
+	if err != nil || len(got) != 2 || !strings.Contains(got[0].Candidate, " TCP ") {
+		t.Fatalf("candidate=%+v error=%v", got, err)
+	}
+}

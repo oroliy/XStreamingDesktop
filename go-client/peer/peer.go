@@ -88,7 +88,11 @@ func (p *Peer) AddCandidate(candidate string, mid string, line uint16) error {
 		return nil
 	}
 	candidate = strings.TrimPrefix(candidate, "a=")
-	return p.conn.AddICECandidate(webrtc.ICECandidateInit{Candidate: candidate, SDPMid: &mid, SDPMLineIndex: &line})
+	init := webrtc.ICECandidateInit{Candidate: candidate, SDPMLineIndex: &line}
+	if mid != "" {
+		init.SDPMid = &mid
+	}
+	return p.conn.AddICECandidate(init)
 }
 
 // OnConnectionStateChange registers a callback for transport state changes.
