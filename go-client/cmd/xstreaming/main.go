@@ -19,6 +19,7 @@ import (
 	"github.com/oroliy/XStreamingDesktop/go-client/catalog"
 	"github.com/oroliy/XStreamingDesktop/go-client/controller"
 	"github.com/oroliy/XStreamingDesktop/go-client/media"
+	"github.com/oroliy/XStreamingDesktop/go-client/peer"
 	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
 	"github.com/oroliy/XStreamingDesktop/go-client/remote"
 	"github.com/oroliy/XStreamingDesktop/go-client/session"
@@ -982,7 +983,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 				})
 			}()
 		}
-	}, RTC: webrtc.Configuration{ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:worldaz.relay.teams.microsoft.com:3478"}}}}, OnTrack: track, OnError: onError, PreferIPv6: prefs.PreferIPv6, OnConnectionState: func(state webrtc.PeerConnectionState) {
+	}, RTC: peer.DefaultRTCConfiguration(), OnTrack: track, OnError: onError, PreferIPv6: prefs.PreferIPv6, OnConnectionState: func(state webrtc.PeerConnectionState) {
 		if ctx.Err() != nil {
 			return
 		}

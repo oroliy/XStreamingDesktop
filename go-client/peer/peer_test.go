@@ -195,3 +195,28 @@ func TestOfferOnlySupportedCodecs(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultDataChannelsAndSTUN(t *testing.T) {
+	config := DefaultRTCConfiguration()
+	if len(config.ICEServers) < 2 {
+		t.Fatal("missing STUN alternatives")
+	}
+	for _, server := range config.ICEServers {
+		for _, address := range server.URLs {
+			if !strings.HasPrefix(address, "stun:") {
+				t.Fatalf("unexpected ICE server %q", address)
+			}
+		}
+	}
+	p, err := New(config, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	for name, protocol := range map[string]string{"input": "1.0", "chat": "chatV1", "control": "controlV1", "message": "messageV1"} {
+		channel := p.Channel(name)
+		if channel == nil || channel.Protocol() != protocol || !channel.Ordered() || channel.MaxRetransmits() != nil || channel.MaxPacketLifeTime() != nil {
+			t.Fatalf("unexpected %s channel configuration", name)
+		}
+	}
+}
