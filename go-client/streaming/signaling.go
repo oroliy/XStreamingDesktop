@@ -99,7 +99,7 @@ func (c *Client) pollExchange(ctx context.Context, path string) (json.RawMessage
 			ExchangeResponse string          `json:"exchangeResponse"`
 			ErrorDetails     json.RawMessage `json:"errorDetails"`
 		}
-		_, err := c.request(ctx, http.MethodGet, path, nil, &reply)
+		_, err := c.pollGET(ctx, path, &reply)
 		if err != nil {
 			return nil, err
 		}

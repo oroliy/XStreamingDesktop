@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -63,5 +64,46 @@ func TestStateCancellationAndErrors(t *testing.T) {
 	}
 	if _, err := NewClient(s.URL, "token", "other", nil); err == nil {
 		t.Fatal("accepted invalid type")
+	}
+}
+
+func TestStateRetriesTemporaryServiceFailure(t *testing.T) {
+	var calls atomic.Int32
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) <= 2 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(`{"state":"Provisioned"}`))
+	}))
+	defer s.Close()
+	c, _ := NewClient(s.URL, "token", "home", s.Client())
+	state, err := c.State(context.Background(), "abc")
+	if err != nil || string(state) != `{"state":"Provisioned"}` || calls.Load() != 3 {
+		t.Fatalf("state=%s calls=%d error=%v", state, calls.Load(), err)
+	}
+}
+
+func TestPollingDoesNotRetryClientErrorsAndCanCancel(t *testing.T) {
+	var calls atomic.Int32
+	status := atomic.Int32{}
+	status.Store(http.StatusNotFound)
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(int(status.Load()))
+	}))
+	defer s.Close()
+	c, _ := NewClient(s.URL, "token", "home", s.Client())
+	_, err := c.State(context.Background(), "abc")
+	var response *HTTPError
+	if !errors.As(err, &response) || response.Status != http.StatusNotFound || calls.Load() != 1 {
+		t.Fatalf("calls=%d error=%v", calls.Load(), err)
+	}
+	status.Store(http.StatusServiceUnavailable)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	_, err = c.State(ctx, "abc")
+	if !errors.Is(err, context.DeadlineExceeded) || calls.Load() != 2 {
+		t.Fatalf("calls=%d error=%v", calls.Load(), err)
 	}
 }

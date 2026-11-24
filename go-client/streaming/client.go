@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -154,6 +156,33 @@ func (c *Client) requestOnce(ctx context.Context, method, path string, body any,
 	return resp.StatusCode, nil
 }
 
+// pollGET retries only safe polling requests after short-lived service or network failures.
+func (c *Client) pollGET(ctx context.Context, path string, out any) (int, error) {
+	const retries = 3
+	for attempt := 0; ; attempt++ {
+		status, err := c.request(ctx, http.MethodGet, path, nil, out)
+		if err == nil || attempt == retries || !retryablePollError(err) {
+			return status, err
+		}
+		timer := time.NewTimer(200 * time.Millisecond * time.Duration(1<<attempt))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return status, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func retryablePollError(err error) bool {
+	var response *HTTPError
+	if errors.As(err, &response) {
+		return response.Status >= 500 && response.Status <= 599
+	}
+	var network net.Error
+	return errors.As(err, &network) && network.Timeout()
+}
+
 func (c *Client) sessionPath(id string) (string, error) {
 	if id == "" || strings.ContainsAny(id, "/?#") || id == "." || id == ".." {
 		return "", fmt.Errorf("invalid session ID")
@@ -169,7 +198,7 @@ func (c *Client) State(ctx context.Context, id string) (json.RawMessage, error) 
 	}
 	for {
 		var result json.RawMessage
-		status, err := c.request(ctx, http.MethodGet, path+"/state", nil, &result)
+		status, err := c.pollGET(ctx, path+"/state", &result)
 		if err != nil {
 			return nil, err
 		}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -78,5 +79,27 @@ func TestExchangePollingCancellation(t *testing.T) {
 	defer cancel()
 	if _, err := c.ExchangeICE(ctx, "abc", nil); err != context.DeadlineExceeded {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestSignalingPollRetriesWithoutRepeatingPost(t *testing.T) {
+	var posts, polls atomic.Int32
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posts.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if polls.Add(1) == 1 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		_, _ = w.Write([]byte(`{"exchangeResponse":"[]"}`))
+	}))
+	defer s.Close()
+	c, _ := NewClient(s.URL, "token", "home", s.Client())
+	result, err := c.ExchangeICE(context.Background(), "abc", nil)
+	if err != nil || string(result) != "[]" || posts.Load() != 1 || polls.Load() != 2 {
+		t.Fatalf("result=%s posts=%d polls=%d error=%v", result, posts.Load(), polls.Load(), err)
 	}
 }
