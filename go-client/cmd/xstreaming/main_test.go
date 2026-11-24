@@ -239,3 +239,18 @@ func TestStreamEndStatusReportsCleanupFailure(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestNewCloudLoadCancelsPreviousRequest(t *testing.T) {
+	var a app
+	parent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	first, firstGeneration := a.beginCloudLoad(parent)
+	second, secondGeneration := a.beginCloudLoad(parent)
+	if first.Err() != context.Canceled || second.Err() != nil || secondGeneration <= firstGeneration || a.cloudGeneration.Load() != secondGeneration {
+		t.Fatal("cloud requests did not retain initiation order")
+	}
+	cancel()
+	if second.Err() != context.Canceled {
+		t.Fatal("account cancellation did not stop current request")
+	}
+}

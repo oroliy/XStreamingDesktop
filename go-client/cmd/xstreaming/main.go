@@ -45,6 +45,7 @@ type app struct {
 	frame             *ui.Bitmap
 	framePending      atomic.Bool
 	cloudGeneration   atomic.Uint64
+	cloudCancel       context.CancelFunc
 	prefs             settings.Settings
 	settingsPath      string
 	filter            string
@@ -204,10 +205,13 @@ func (a *app) view(c *ui.Context) {
 				ui.Text(c, a.tr("Resolution"))
 				changed := ui.Select(c.Key("resolution"), &a.prefs.Resolution, []string{"720p", "1080p", "1080p HQ"}).Changed()
 				ui.Text(c, a.tr("Language"))
-				changed = ui.Select(c.Key("language"), &a.prefs.Language, []string{"en-US", "zh-TW", "zh-CN", "ja-JP"}).Changed() || changed
+				languageChanged := ui.Select(c.Key("language"), &a.prefs.Language, []string{"en-US", "zh-TW", "zh-CN", "ja-JP"}).Changed()
 				ui.Text(c, a.tr("Market"))
-				changed = ui.Select(c.Key("market"), &a.prefs.Market, []string{"US", "TW", "JP", "GB"}).Changed() || changed
-				if changed && a.settingsPath != "" {
+				marketChanged := ui.Select(c.Key("market"), &a.prefs.Market, []string{"US", "TW", "JP", "GB"}).Changed()
+				if (languageChanged || marketChanged) && a.credentials != nil && a.accountCtx != nil && a.accountCtx.Err() == nil && a.streamCancel == nil {
+					a.startCloudLoad(a.accountCtx, a.credentials, a.prefs)
+				}
+				if (changed || languageChanged || marketChanged) && a.settingsPath != "" {
 					if err := settings.Save(a.settingsPath, a.prefs); err != nil {
 						a.status = "Unable to save settings: " + err.Error()
 					}
@@ -240,8 +244,7 @@ func (a *app) view(c *ui.Context) {
 			ui.TextInput(c.Key("search"), &a.filter).Placeholder(a.tr("Search games")).Label(a.tr("Search games")).Width(320)
 			if a.credentials != nil && a.accountCtx != nil && !a.busy && a.streamCancel == nil {
 				if ui.Button(c.Key("reload-cloud"), a.tr("Reload cloud catalog")).Clicked() {
-					a.cloudStatus = "Loading cloud games…"
-					go a.loadCloud(a.accountCtx, a.credentials, a.prefs)
+					a.startCloudLoad(a.accountCtx, a.credentials, a.prefs)
 				}
 			}
 			if a.cloudStatus != "" {
@@ -386,7 +389,6 @@ func (a *app) connectAccount(ctx context.Context, refresh string, prefs settings
 		}
 		a.busy = false
 		a.credentials = credentials
-		a.cloudStatus = "Loading cloud games…"
 		if homeErr != nil {
 			a.status = "Home streaming unavailable; checking cloud games."
 		} else {
@@ -408,7 +410,7 @@ func (a *app) connectAccount(ctx context.Context, refresh string, prefs settings
 				}()
 			}
 		}
-		go a.loadCloud(ctx, credentials, prefs)
+		a.startCloudLoad(ctx, credentials, a.prefs)
 	})
 }
 
@@ -447,8 +449,24 @@ func (a *app) refreshConsoles(ctx context.Context, credentials *auth.Session, cl
 		a.status = fmt.Sprintf("Found %d console(s).", len(consoles))
 	})
 }
-func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs settings.Settings) {
-	generation := a.cloudGeneration.Add(1)
+
+// beginCloudLoad runs on the UI thread so request order matches user actions.
+func (a *app) beginCloudLoad(ctx context.Context) (context.Context, uint64) {
+	if a.cloudCancel != nil {
+		a.cloudCancel()
+	}
+	requestCtx, cancel := context.WithCancel(ctx)
+	a.cloudCancel = cancel
+	return requestCtx, a.cloudGeneration.Add(1)
+}
+
+func (a *app) startCloudLoad(ctx context.Context, credentials *auth.Session, prefs settings.Settings) {
+	requestCtx, generation := a.beginCloudLoad(ctx)
+	a.cloudStatus = "Loading cloud games…"
+	go a.loadCloud(requestCtx, credentials, prefs, generation)
+}
+
+func (a *app) loadCloud(ctx context.Context, credentials *auth.Session, prefs settings.Settings, generation uint64) {
 	token, region, err := credentials.StreamingToken(ctx, "cloud")
 	if err != nil {
 		a.update(func() {
