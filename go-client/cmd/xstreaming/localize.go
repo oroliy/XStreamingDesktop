@@ -8,6 +8,7 @@ var chinese = map[string]string{
 	"Press Xbox button": "短按 Xbox 按钮", "Hold Xbox button": "长按 Xbox 按钮",
 	"Video display": "画面显示", "Fit": "适应", "Crop": "裁剪填满", "Stretch": "拉伸",
 	"Hide controls": "收起控制栏", "Show controls": "显示控制栏",
+	"Enable microphone": "启用麦克风", "Disable microphone": "关闭麦克风", "Starting microphone…": "正在启动麦克风…", "Microphone on.": "麦克风已开启。", "Stopping microphone…": "正在关闭麦克风…",
 	"Connection did not recover; please retry.": "连接未能恢复，请重试。",
 	"Open Microsoft sign-in page":               "打开微软登录页面", "Enable keyboard controller": "启用键盘手柄", "Disable keyboard controller": "停用键盘手柄",
 	"WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable": "WASD：左摇杆 · TFGH：右摇杆 · IJKL：面键 · 方向键：方向键 · Esc：退出",
@@ -21,6 +22,7 @@ var chinese = map[string]string{
 	"Loading cloud games…": "正在加载云游戏…", "Cloud games unavailable for this account or region.": "当前账号或地区无法使用云游戏。", "Invalid cloud service region.": "云服务区域无效。", "Unable to load cloud games.": "无法加载云游戏。", "Home streaming unavailable; checking cloud games.": "主机串流不可用，正在检查云游戏。", "System credential store unavailable; sign in manually.": "系统凭据库不可用，请手动登录。", "Unable to save renewed login; sign in may be required next time.": "无法保存更新的登录信息，下次可能需要重新登录。", "Unable to open browser; enter the address manually.": "无法打开浏览器，请手动输入地址。",
 }
 var chinesePrefixes = []struct{ en, zh string }{
+	{"Microphone failed: ", "麦克风启动或采集失败："},
 	{"Connection did not recover; remote session cleanup failed: ", "连接未能恢复，且远程会话清理失败："},
 	{"ffmpeg is required for streaming; install FFmpeg and add it to PATH: ", "串流需要 ffmpeg；请安装 FFmpeg 并加入 PATH："},
 	{"ffplay is required for streaming; install FFmpeg and add it to PATH: ", "串流需要 ffplay；请安装 FFmpeg 并加入 PATH："},

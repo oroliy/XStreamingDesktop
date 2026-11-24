@@ -8,6 +8,7 @@ import (
 	"image"
 	"log"
 	"net/url"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,6 +50,11 @@ type app struct {
 	streamCtx         context.Context
 	streamConnected   bool
 	inputReady        bool
+	micSession        *session.Session
+	micCtx            context.Context
+	micCancel         context.CancelFunc
+	micStopping       bool
+	micStatus         string
 	consoleText       string
 	textStatus        string
 	textSending       bool
@@ -81,6 +87,9 @@ func (a *app) view(c *ui.Context) {
 			}
 			if a.wakeWarning != "" {
 				ui.Text(c, a.tr(a.wakeWarning))
+			}
+			if a.micStatus != "" {
+				ui.Text(c, a.tr(a.micStatus))
 			}
 			if ui.Button(c.Key("show-stream-controls"), a.tr("Show controls")).Clicked() {
 				a.controlsHidden = false
@@ -163,6 +172,24 @@ func (a *app) view(c *ui.Context) {
 			}
 		}
 		if a.streamCancel != nil {
+			if runtime.GOOS == "linux" && a.micSession != nil && (a.streamConnected || a.micCancel != nil) {
+				label := "Enable microphone"
+				if a.micCancel != nil {
+					label = "Disable microphone"
+				}
+				if ui.Button(c.Key("microphone"), a.tr(label)).Disabled(a.micStopping).Clicked() {
+					if a.micCancel == nil {
+						a.startMicrophone()
+					} else {
+						a.micStopping = true
+						a.micStatus = "Stopping microphone…"
+						a.micCancel()
+					}
+				}
+			}
+			if a.micStatus != "" {
+				ui.Text(c, a.tr(a.micStatus))
+			}
 			if a.streamConnected && a.inputReady {
 				if ui.Button(c.Key("press-nexus"), a.tr("Press Xbox button")).Clicked() {
 					a.keyboard.PressNexus(150 * time.Millisecond)
@@ -854,6 +881,7 @@ func (a *app) stopStream(powerOff bool) {
 	}
 	a.streamCancel()
 	a.streamCancel = nil
+	a.clearMicrophone()
 	a.controlsHidden = false
 	a.streamConnected = false
 	a.inputReady = false
@@ -1112,6 +1140,16 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		}
 		return nil
 	}
+	a.update(func() {
+		if ctx.Err() == nil {
+			select {
+			case <-s.Done():
+				return
+			default:
+				a.micSession = s
+			}
+		}
+	})
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
@@ -1202,6 +1240,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		}
 		a.busy = false
 		a.streamCancel = nil
+		a.clearMicrophone()
 		a.controlsHidden = false
 		if a.fullscreen && a.win != nil {
 			a.win.SetFullScreen(false)

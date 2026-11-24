@@ -1,6 +1,6 @@
 # Go client (early development)
 
-This directory contains an early MyGo migration. The native window is an experimental preview that can initiate home and cloud streaming and display decoded H.264 frames. It reads up to four gamepads with adjustable stick dead zone and polling rate; microphone capture, vibration and other existing features are not implemented. Input, audio and video have not been validated with a real Xbox. Use the original Electron application for streaming.
+This directory contains an early MyGo migration. The native window is an experimental preview that can initiate home and cloud streaming and display decoded H.264 frames. It reads up to four gamepads with adjustable stick dead zone and polling rate; vibration and other existing features are not implemented. Input, audio and video have not been validated with a real Xbox. Use the original Electron application for streaming.
 
 [中文说明](README.zh_CN.md)
 
@@ -15,7 +15,7 @@ The `streaming` package currently implements session creation, state polling, ke
 
 The `peer` package provides a Pion WebRTC peer with audio/video transceivers and Xbox data channels. Local tests negotiate a peer connection, send a data-channel message, and receive a video RTP packet. The `session` package connects service signaling to the peer and handles provisioning and cleanup; it is connected to the preview UI but has not been tested with an Xbox.
 
-The session package can negotiate a caller-supplied Opus microphone track and detach it on request. An FFmpeg encoder helper produces mono Opus samples and is tested with synthetic audio. A local WebRTC test covers sending and stopping audio, but the preview has no microphone device capture or UI yet; the track is not enabled automatically. The encoder helper requires an FFmpeg build with libopus.
+On Linux, the stream view can explicitly enable or disable the default PulseAudio microphone (including PipeWire's PulseAudio compatibility service). It requires an FFmpeg build with PulseAudio input and libopus. Capture is off until enabled and stops when disabled or the session ends. The encoder and WebRTC transmission have been tested with synthetic audio; microphone hardware and Xbox voice chat have not been validated. Microphone capture is not available on macOS or Windows yet.
 
 After a connection is established, the client allows 30 seconds for a disconnected connection to recover. If it does not recover, the client ends the session and attempts remote cleanup; a cleanup failure is shown in the interface.
 
