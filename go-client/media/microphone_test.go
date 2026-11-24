@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,6 +50,21 @@ func TestEncodeMicrophoneStopsOnCallbackFailure(t *testing.T) {
 	}
 }
 
+func TestEncodeMicrophoneEmitsDuringLiveInput(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		mediaTestUnavailable(t, "ffmpeg unavailable: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	gotSample := errors.New("received live sample")
+	err := EncodeMicrophone(ctx, []string{"-re", "-f", "lavfi", "-i", "sine=frequency=440:duration=30"}, func(pionmedia.Sample) error {
+		return gotSample
+	})
+	if !errors.Is(err, gotSample) {
+		t.Fatalf("encoder did not produce audio while input remained open: %v", err)
+	}
+}
+
 func TestEncodeMicrophoneStopsOnCancellation(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		mediaTestUnavailable(t, "ffmpeg unavailable: %v", err)
@@ -61,6 +77,21 @@ func TestEncodeMicrophoneStopsOnCancellation(t *testing.T) {
 	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected cancellation, got %v", err)
+	}
+}
+
+func TestEncodeMicrophoneReportsInputFailure(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		mediaTestUnavailable(t, "ffmpeg unavailable: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := EncodeMicrophone(ctx, []string{"-f", "lavfi", "-i", "no_such_xstreaming_filter"}, func(pionmedia.Sample) error {
+		t.Fatal("unexpected audio")
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "no_such_xstreaming_filter") {
+		t.Fatalf("missing ffmpeg input error: %v", err)
 	}
 }
 

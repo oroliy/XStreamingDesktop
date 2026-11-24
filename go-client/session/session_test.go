@@ -278,7 +278,7 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 	sent := []byte{0xf8, 0xff, 0xfe}
 	if _, lookupErr := exec.LookPath("ffmpeg"); lookupErr == nil {
 		oneSample := errors.New("one sample sent")
-		encodeErr := appmedia.EncodeMicrophone(ctx, []string{"-f", "lavfi", "-i", "sine=frequency=440:duration=0.2"}, func(sample pionmedia.Sample) error {
+		encodeErr := appmedia.EncodeMicrophone(ctx, []string{"-re", "-f", "lavfi", "-i", "sine=frequency=440:duration=30"}, func(sample pionmedia.Sample) error {
 			sent = append([]byte(nil), sample.Data...)
 			if err := mic.WriteSample(sample); err != nil {
 				return err
