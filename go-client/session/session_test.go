@@ -269,3 +269,138 @@ func TestConnectedSessionIsNotTimedOut(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// No ICE candidates are exchanged, so signaling succeeds but the connection stalls.
+func TestConnectionTimeoutStopsRemoteSession(t *testing.T) {
+	remote, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer remote.Close()
+	withoutCandidates := func(sdp string) string {
+		lines := strings.Split(sdp, "\r\n")
+		filtered := lines[:0]
+		for _, line := range lines {
+			if !strings.HasPrefix(line, "a=candidate:") && line != "a=end-of-candidates" {
+				filtered = append(filtered, line)
+			}
+		}
+		return strings.Join(filtered, "\r\n")
+	}
+	var answer string
+	var stops atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v5/sessions/home/play":
+			fmt.Fprint(w, `{"sessionPath":"/v5/sessions/timeout"}`)
+		case r.URL.Path == "/v5/sessions/home/timeout/state":
+			fmt.Fprint(w, `{"state":"Provisioned"}`)
+		case r.URL.Path == "/v5/sessions/home/timeout/sdp" && r.Method == http.MethodPost:
+			var offer struct {
+				SDP string `json:"sdp"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&offer); err != nil {
+				t.Error(err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if err := remote.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: withoutCandidates(offer.SDP)}); err != nil {
+				t.Error(err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			desc, err := remote.CreateAnswer(nil)
+			if err != nil {
+				t.Error(err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			gathered := webrtc.GatheringCompletePromise(remote)
+			if err := remote.SetLocalDescription(desc); err != nil {
+				t.Error(err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			<-gathered
+			answer = withoutCandidates(remote.LocalDescription().SDP)
+			w.WriteHeader(http.StatusNoContent)
+		case r.URL.Path == "/v5/sessions/home/timeout/sdp":
+			payload, _ := json.Marshal(map[string]string{"sdp": answer})
+			_ = json.NewEncoder(w).Encode(map[string]string{"exchangeResponse": string(payload)})
+		case r.URL.Path == "/v5/sessions/home/timeout/ice" && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusNoContent)
+		case r.URL.Path == "/v5/sessions/home/timeout/ice":
+			fmt.Fprint(w, `{"exchangeResponse":"[]"}`)
+		case r.URL.Path == "/v5/sessions/home/timeout" && r.Method == http.MethodDelete:
+			stops.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client, err := streaming.NewClient(server.URL, "token", "home", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := Start(ctx, client, Options{Play: streaming.PlayOptions{Target: "console"}, ConnectionTimeout: 50 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	select {
+	case <-s.Done():
+		if !errors.Is(s.Err(), ErrConnectionTimeout) {
+			t.Fatalf("unexpected session cause: %v", s.Err())
+		}
+	case <-ctx.Done():
+		t.Fatal("session did not time out")
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if stops.Load() != 1 {
+		t.Fatalf("remote session stopped %d times", stops.Load())
+	}
+}
+
+func TestSignalingTimeoutCleansUp(t *testing.T) {
+	var stops atomic.Int32
+	var polls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v5/sessions/home/play":
+			fmt.Fprint(w, `{"sessionPath":"/v5/sessions/slow"}`)
+		case r.URL.Path == "/v5/sessions/home/slow/state":
+			fmt.Fprint(w, `{"state":"Provisioned"}`)
+		case r.URL.Path == "/v5/sessions/home/slow/sdp":
+			if r.Method == http.MethodGet {
+				polls.Add(1)
+			}
+			w.WriteHeader(http.StatusNoContent)
+		case r.URL.Path == "/v5/sessions/home/slow" && r.Method == http.MethodDelete:
+			stops.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client, err := streaming.NewClient(server.URL, "token", "home", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := Start(ctx, client, Options{Play: streaming.PlayOptions{Target: "console"}, SignalingTimeout: 500 * time.Millisecond})
+	if s != nil || !errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+		t.Fatalf("expected signaling timeout, got session %v and error %v", s, err)
+	}
+	if stops.Load() != 1 || polls.Load() == 0 {
+		t.Fatalf("stops=%d signaling polls=%d", stops.Load(), polls.Load())
+	}
+}

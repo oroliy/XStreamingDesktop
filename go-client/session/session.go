@@ -43,6 +43,7 @@ type Options struct {
 	OnConnectionState func(webrtc.PeerConnectionState)
 	PreferIPv6        bool
 	ConnectionTimeout time.Duration // zero defaults to 45 seconds after signaling
+	SignalingTimeout  time.Duration // zero defaults to 60 seconds after provisioning
 }
 
 // Start creates and provisions a session, negotiates SDP and exchanges ICE.
@@ -72,6 +73,12 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 	if opts.OnProgress != nil {
 		opts.OnProgress("Negotiating")
 	}
+	signalingTimeout := opts.SignalingTimeout
+	if signalingTimeout <= 0 {
+		signalingTimeout = 60 * time.Second
+	}
+	signaling, cancelSignaling := context.WithTimeout(live, signalingTimeout)
+	defer cancelSignaling()
 	s.peer, err = peer.New(opts.RTC, opts.OnTrack)
 	if err != nil {
 		return nil, err
@@ -90,13 +97,13 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 		}
 	})
 	s.peer.StartControl(live, opts.OnError)
-	offer, err := s.peer.Offer(live)
+	offer, err := s.peer.Offer(signaling)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create WebRTC offer: %w", err)
 	}
-	raw, err := client.ExchangeSDP(live, id, offer.SDP, false)
+	raw, err := client.ExchangeSDP(signaling, id, offer.SDP, false)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("exchange SDP: %w", err)
 	}
 	var answer struct {
 		SDP string `json:"sdp"`
@@ -111,9 +118,9 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 	if err != nil {
 		return nil, err
 	}
-	raw, err = client.ExchangeICE(live, id, local)
+	raw, err = client.ExchangeICE(signaling, id, local)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("exchange ICE candidates: %w", err)
 	}
 	var remote []streaming.ICECandidate
 	if err = json.Unmarshal(raw, &remote); err != nil {
