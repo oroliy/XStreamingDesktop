@@ -48,6 +48,7 @@ type app struct {
 	streamCancel      context.CancelFunc
 	streamCtx         context.Context
 	streamConnected   bool
+	inputReady        bool
 	consoleText       string
 	textStatus        string
 	textSending       bool
@@ -142,7 +143,7 @@ func (a *app) view(c *ui.Context) {
 			}
 		}
 		if a.streamCancel != nil {
-			if a.streamConnected {
+			if a.streamConnected && a.inputReady {
 				if ui.Button(c.Key("press-nexus"), a.tr("Press Xbox button")).Clicked() {
 					a.keyboard.PressNexus(150 * time.Millisecond)
 				}
@@ -826,6 +827,7 @@ func (a *app) stopStream(powerOff bool) {
 	a.streamCancel()
 	a.streamCancel = nil
 	a.streamConnected = false
+	a.inputReady = false
 	a.consoleText, a.textStatus, a.textSending = "", "", false
 	a.busy = true
 	a.frame = nil
@@ -1131,11 +1133,14 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 				}
 				if waiting {
 					a.status = "Controller input is still connecting."
-				} else if a.status == "Controller input is still connecting." {
-					if a.frame == nil {
-						a.status = "Connected; waiting for video…"
-					} else {
-						a.status = "Streaming video."
+				} else {
+					a.inputReady = true
+					if a.status == "Controller input is still connecting." {
+						if a.frame == nil {
+							a.status = "Connected; waiting for video…"
+						} else {
+							a.status = "Streaming video."
+						}
 					}
 				}
 			})
@@ -1173,6 +1178,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		a.frame = nil
 		a.decodedFPS = 0
 		a.streamConnected = false
+		a.inputReady = false
 		a.wakeWarning = ""
 		a.keyboardEnabled = false
 		a.keyboard.Set(false, protocol.Gamepad{})
@@ -1201,8 +1207,15 @@ func monitorControllerReady(ctx context.Context, sessionDone, ready <-chan struc
 	defer timer.Stop()
 	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
-	warned, handshake := false, false
+	handshake := false
 	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-sessionDone:
+			return
+		default:
+		}
 		if !handshake {
 			select {
 			case <-ready:
@@ -1211,9 +1224,7 @@ func monitorControllerReady(ctx context.Context, sessionDone, ready <-chan struc
 			}
 		}
 		if handshake && inputOpen() {
-			if warned {
-				notify(false)
-			}
+			notify(false)
 			return
 		}
 		select {
@@ -1222,7 +1233,6 @@ func monitorControllerReady(ctx context.Context, sessionDone, ready <-chan struc
 		case <-sessionDone:
 			return
 		case <-timer.C:
-			warned = true
 			notify(true)
 		case <-ticker.C:
 		}

@@ -299,6 +299,18 @@ func TestControllerMonitorStopsWithSession(t *testing.T) {
 	monitorControllerReady(context.Background(), done, make(chan struct{}), func() bool { return false }, time.Second, time.Millisecond, func(bool) { t.Error("notification after session ended") })
 }
 
+func TestControllerMonitorReportsImmediateReadiness(t *testing.T) {
+	ready := make(chan struct{})
+	close(ready)
+	var notifications []bool
+	monitorControllerReady(context.Background(), make(chan struct{}), ready, func() bool { return true }, time.Second, time.Millisecond, func(waiting bool) {
+		notifications = append(notifications, waiting)
+	})
+	if len(notifications) != 1 || notifications[0] {
+		t.Fatalf("notifications: %v", notifications)
+	}
+}
+
 func TestCloudAndExpiredSignInTranslations(t *testing.T) {
 	a := &app{prefs: settings.Settings{UILanguage: "简体中文"}}
 	if got := a.tr("Sign-in expired; please sign in again."); got != "登录信息已失效，请重新登录。" {
@@ -453,6 +465,11 @@ func TestXboxButtonControls(t *testing.T) {
 		t.Fatal("button shown before connection")
 	}
 	a.streamConnected = true
+	tt.Frame()
+	if tt.HasText("Press Xbox button") {
+		t.Fatal("button shown before input channel is ready")
+	}
+	a.inputReady = true
 	tt.Frame()
 	if !tt.HasText("Press Xbox button") || tt.HasText("Hold Xbox button") {
 		t.Fatal("unexpected cloud controls")
