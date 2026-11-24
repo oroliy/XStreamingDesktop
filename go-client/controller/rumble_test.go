@@ -64,6 +64,12 @@ func TestRumbleExpires(t *testing.T) {
 	}
 }
 
+func TestDisabledVibrationDoesNotRegisterFeedback(t *testing.T) {
+	if vibrationFeedback(nil, false) != nil {
+		t.Fatal("disabled vibration returned a feedback channel")
+	}
+}
+
 type feedbackTestSender struct{ added chan uint8 }
 
 func (*feedbackTestSender) Init(uint8) error                      { return nil }

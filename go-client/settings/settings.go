@@ -25,6 +25,7 @@ type Settings struct {
 	PollingRate      string  `json:"polling_rate"`
 	PreferIPv6       bool    `json:"prefer_ipv6"`
 	WakeBeforeStream bool    `json:"wake_before_stream"`
+	Vibration        bool    `json:"vibration"`
 }
 
 // GameLanguages lists locales sent to the streaming and catalog services.
@@ -38,7 +39,7 @@ func CatalogMarkets() []string {
 }
 
 func Defaults() Settings {
-	return Settings{Resolution: "1080p", UILanguage: "English", Language: "en-US", Market: "US", CloudRegion: "Automatic", VideoFit: "Fit", MicrophoneSource: "default", Volume: 100, StickDeadzone: 10, PollingRate: "60 Hz"}
+	return Settings{Resolution: "1080p", UILanguage: "English", Language: "en-US", Market: "US", CloudRegion: "Automatic", VideoFit: "Fit", MicrophoneSource: "default", Volume: 100, StickDeadzone: 10, PollingRate: "60 Hz", Vibration: true}
 }
 func (s Settings) Validate() error {
 	if s.MicrophoneSource == "" || len(s.MicrophoneSource) > 256 || strings.TrimSpace(s.MicrophoneSource) != s.MicrophoneSource || strings.ContainsAny(s.MicrophoneSource, "\x00\r\n") {

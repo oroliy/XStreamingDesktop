@@ -419,6 +419,11 @@ func (a *app) view(c *ui.Context) {
 					a.status = "Unable to save settings: " + err.Error()
 				}
 			}
+			if runtime.GOOS == "windows" && ui.Checkbox(c.Key("vibration"), &a.prefs.Vibration, a.tr("Controller vibration (next stream)")).Changed() && a.settingsPath != "" {
+				if err := settings.Save(a.settingsPath, a.prefs); err != nil {
+					a.status = "Unable to save settings: " + err.Error()
+				}
+			}
 			ui.Row(c).Gap(8).Children(func() {
 				ui.Text(c, a.tr("Starting volume"))
 				if ui.Slider(c.Key("volume"), &a.prefs.Volume, 0, 100).Label(a.tr("Starting volume")).Width(180).Changed() && a.settingsPath != "" {
@@ -1321,7 +1326,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 				}
 			})
 		}
-		if err := controller.Run(inputCtx, s.Input(), s.InputChannel(), s.Ready(), &a.keyboard, prefs.StickDeadzone/100, prefs.PollingRateHz(), func(error) { notifyInput(true) }, func() { notifyInput(false) }); err != nil {
+		if err := controller.Run(inputCtx, s.Input(), s.InputChannel(), s.Ready(), &a.keyboard, prefs.StickDeadzone/100, prefs.PollingRateHz(), prefs.Vibration, func(error) { notifyInput(true) }, func() { notifyInput(false) }); err != nil {
 			onError(err)
 		}
 	}()

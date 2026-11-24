@@ -22,7 +22,7 @@ func TestVibrationFeedbackOverLocalDataChannel(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer remote.Close()
-	feedback := vibrationFeedback(local.Channel("input"))
+	feedback := vibrationFeedback(local.Channel("input"), true)
 	remoteChannel := make(chan *webrtc.DataChannel, 1)
 	remote.OnDataChannel(func(dc *webrtc.DataChannel) {
 		if dc.Label() == "input" {

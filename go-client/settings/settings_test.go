@@ -20,6 +20,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 	s.PollingRate = "250 Hz"
 	s.VideoFit = "Crop"
 	s.MicrophoneSource = "alsa_input.usb-example"
+	s.Vibration = false
 	if err = Save(p, s); err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +40,7 @@ func TestLegacySettingsGainDefaultVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := Load(p)
-	if err != nil || got.Volume != 100 || got.StickDeadzone != 10 || got.PollingRate != "60 Hz" || got.ResolutionCode() != 720 || got.UILanguage != "English" || got.VideoFit != "Fit" || got.MicrophoneSource != "default" {
+	if err != nil || got.Volume != 100 || got.StickDeadzone != 10 || got.PollingRate != "60 Hz" || got.ResolutionCode() != 720 || got.UILanguage != "English" || got.VideoFit != "Fit" || got.MicrophoneSource != "default" || !got.Vibration {
 		t.Fatal(got, err)
 	}
 	got.Volume = 101
