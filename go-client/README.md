@@ -9,4 +9,4 @@ go test ./...
 go run ./cmd/xstreaming
 ```
 
-The `streaming` package currently implements session creation, state polling, keepalive, stop, and SDP/ICE signaling requests using an existing streaming token. ICE candidate normalization and token refresh are not yet implemented. Its tests use a local HTTP server and do not require an Xbox account.
+The `streaming` package currently implements session creation, state polling, keepalive, stop, and SDP/ICE signaling requests using an existing streaming token. ICE candidate normalization is available separately; streaming token refresh is not yet implemented. The `auth` package implements Microsoft device-code and refresh-token requests, but Xbox token exchange and UI integration are not yet implemented. Its tests use a local HTTP server and do not require an Xbox account.
