@@ -35,10 +35,26 @@ func New(config webrtc.Configuration, onTrack func(*webrtc.TrackRemote, *webrtc.
 		}
 		p.channels[channel.name] = dc
 	}
-	if _, err = conn.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendrecv}); err != nil {
+	audio, err := conn.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendrecv})
+	if err != nil {
 		return fail(err)
 	}
-	if _, err = conn.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}); err != nil {
+	if err = audio.SetCodecPreferences([]webrtc.RTPCodecParameters{{RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2, SDPFmtpLine: "minptime=10;useinbandfec=1"}, PayloadType: 111}}); err != nil {
+		return fail(err)
+	}
+	video, err := conn.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly})
+	if err != nil {
+		return fail(err)
+	}
+	feedback := []webrtc.RTCPFeedback{{Type: "goog-remb"}, {Type: "ccm", Parameter: "fir"}, {Type: "nack"}, {Type: "nack", Parameter: "pli"}}
+	var h264 []webrtc.RTPCodecParameters
+	for _, profile := range []struct {
+		fmtp    string
+		payload webrtc.PayloadType
+	}{{"42001f", 102}, {"42e01f", 106}, {"4d001f", 127}} {
+		h264 = append(h264, webrtc.RTPCodecParameters{RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000, SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=" + profile.fmtp, RTCPFeedback: feedback}, PayloadType: profile.payload})
+	}
+	if err = video.SetCodecPreferences(h264); err != nil {
 		return fail(err)
 	}
 	return p, nil

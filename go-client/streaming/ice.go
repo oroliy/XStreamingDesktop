@@ -1,6 +1,8 @@
 package streaming
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"sort"
@@ -14,6 +16,49 @@ type ICECandidate struct {
 	SDPMLineIndex string `json:"sdpMLineIndex"`
 	SDPMid        string `json:"sdpMid"`
 }
+
+// UnmarshalJSON accepts both browser numeric and service string m-line indexes.
+func (c *ICECandidate) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Candidate   string          `json:"candidate"`
+		MessageType string          `json:"messageType"`
+		Index       json.RawMessage `json:"sdpMLineIndex"`
+		Mid         string          `json:"sdpMid"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	index := "0"
+	if len(wire.Index) > 0 && !bytes.Equal(wire.Index, []byte("null")) {
+		if wire.Index[0] == '"' {
+			if err := json.Unmarshal(wire.Index, &index); err != nil {
+				return err
+			}
+		} else {
+			index = string(wire.Index)
+		}
+		if _, err := strconv.ParseUint(index, 10, 16); err != nil {
+			return fmt.Errorf("invalid ICE m-line index: %w", err)
+		}
+	}
+	*c = ICECandidate{Candidate: wire.Candidate, MessageType: wire.MessageType, SDPMLineIndex: index, SDPMid: wire.Mid}
+	return nil
+}
+
+// MarshalJSON sends the m-line index as a number, as browser ICE candidates do.
+func (c ICECandidate) MarshalJSON() ([]byte, error) {
+	index, err := strconv.ParseUint(c.SDPMLineIndex, 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("invalid ICE m-line index: %w", err)
+	}
+	return json.Marshal(struct {
+		Candidate   string `json:"candidate"`
+		MessageType string `json:"messageType,omitempty"`
+		Index       uint16 `json:"sdpMLineIndex"`
+		Mid         string `json:"sdpMid"`
+	}{c.Candidate, c.MessageType, uint16(index), c.SDPMid})
+}
+
 type parsedCandidate struct {
 	ip   netip.Addr
 	port string

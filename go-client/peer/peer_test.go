@@ -2,6 +2,7 @@ package peer
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -167,6 +168,30 @@ func TestReceiveVideoRTP(t *testing.T) {
 			return
 		case <-ctx.Done():
 			t.Fatal(ctx.Err())
+		}
+	}
+}
+
+func TestOfferOnlySupportedCodecs(t *testing.T) {
+	p, err := New(webrtc.Configuration{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	offer, err := p.Offer(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, codec := range []string{"H264/90000", "opus/48000"} {
+		if !strings.Contains(offer.SDP, codec) {
+			t.Fatalf("missing %s", codec)
+		}
+	}
+	for _, codec := range []string{"VP8/90000", "VP9/90000", "PCMU/8000", "AV1/90000"} {
+		if strings.Contains(offer.SDP, codec) {
+			t.Fatalf("unexpected %s", codec)
 		}
 	}
 }

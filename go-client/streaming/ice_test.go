@@ -1,6 +1,7 @@
 package streaming
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -28,6 +29,19 @@ func TestNormalizeICERejectsMalformed(t *testing.T) {
 	for _, candidate := range []string{"bad", "candidate:1 1 UDP 1 no-ip 80 typ host", "candidate:1 1 UDP 1 1.2.3.4 0 typ host"} {
 		if _, err := NormalizeICE([]ICECandidate{{Candidate: candidate}}, false); err == nil {
 			t.Fatalf("accepted %q", candidate)
+		}
+	}
+}
+
+func TestICECandidateJSON(t *testing.T) {
+	for _, raw := range []string{`{"candidate":"candidate:1","sdpMLineIndex":1,"sdpMid":"video"}`, `{"candidate":"candidate:1","sdpMLineIndex":"1","sdpMid":"video"}`} {
+		var c ICECandidate
+		if err := json.Unmarshal([]byte(raw), &c); err != nil || c.SDPMLineIndex != "1" {
+			t.Fatal(c, err)
+		}
+		data, err := json.Marshal(c)
+		if err != nil || !strings.Contains(string(data), `"sdpMLineIndex":1`) {
+			t.Fatal(string(data), err)
 		}
 	}
 }
