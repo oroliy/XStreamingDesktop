@@ -129,6 +129,13 @@ func receiveOpus(track rtpReader, out opusWriter) error {
 				}
 			}
 		}
+		// A reader can keep returning already-buffered packets after its deadline.
+		if !gapDeadline.IsZero() && !time.Now().Before(gapDeadline) {
+			if err := drain(true); err != nil {
+				return err
+			}
+			continue
+		}
 		packet, _, err := track.ReadRTP()
 		if err != nil {
 			if errors.Is(err, io.EOF) {

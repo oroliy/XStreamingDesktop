@@ -155,3 +155,42 @@ func TestReceiveOpusFlushesGapOnDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+type duplicatePacketReader struct {
+	count int
+	stop  chan struct{}
+}
+
+func (*duplicatePacketReader) SetReadDeadline(time.Time) error { return nil }
+func (r *duplicatePacketReader) ReadRTP() (*rtp.Packet, interceptor.Attributes, error) {
+	r.count++
+	if r.count == 1 {
+		return &rtp.Packet{Header: rtp.Header{SequenceNumber: 10}}, nil, nil
+	}
+	if r.count > 2 {
+		select {
+		case <-r.stop:
+			return nil, nil, io.EOF
+		case <-time.After(time.Millisecond):
+		}
+	}
+	return &rtp.Packet{Header: rtp.Header{SequenceNumber: 12}}, nil, nil
+}
+
+func TestReceiveOpusGapDeadlineWithDuplicateTraffic(t *testing.T) {
+	reader := &duplicatePacketReader{stop: make(chan struct{})}
+	defer close(reader.stop)
+	out := make(notifiedOpus, 2)
+	done := make(chan error, 1)
+	go func() { done <- receiveOpus(reader, out) }()
+	for _, expected := range []uint16{10, 12} {
+		select {
+		case got := <-out:
+			if got != expected {
+				t.Fatalf("got %d, want %d", got, expected)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("duplicate traffic delayed buffered audio")
+		}
+	}
+}
