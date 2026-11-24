@@ -25,6 +25,10 @@ import (
 )
 
 func TestSessionNegotiationAndCleanup(t *testing.T) {
+	virtualPulse := os.Getenv("XSTREAMING_TEST_PULSE_SERVER")
+	if virtualPulse != "" {
+		t.Setenv("PULSE_SERVER", virtualPulse)
+	}
 	remote, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		t.Fatal(err)
@@ -278,7 +282,11 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 	sent := []byte{0xf8, 0xff, 0xfe}
 	if _, lookupErr := exec.LookPath("ffmpeg"); lookupErr == nil {
 		oneSample := errors.New("one sample sent")
-		encodeErr := appmedia.EncodeMicrophone(ctx, []string{"-re", "-f", "lavfi", "-i", "sine=frequency=440:duration=30"}, func(sample pionmedia.Sample) error {
+		input := []string{"-re", "-f", "lavfi", "-i", "sine=frequency=440:duration=30"}
+		if virtualPulse != "" {
+			input = []string{"-f", "pulse", "-i", "default"}
+		}
+		encodeErr := appmedia.EncodeMicrophone(ctx, input, func(sample pionmedia.Sample) error {
 			sent = append([]byte(nil), sample.Data...)
 			if err := mic.WriteSample(sample); err != nil {
 				return err
@@ -286,7 +294,7 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 			return oneSample
 		})
 		if !errors.Is(encodeErr, oneSample) {
-			if os.Getenv("XSTREAMING_REQUIRE_MEDIA_TESTS") == "1" {
+			if os.Getenv("XSTREAMING_REQUIRE_MEDIA_TESTS") == "1" || virtualPulse != "" {
 				t.Fatalf("encode microphone audio: %v", encodeErr)
 			}
 			t.Logf("Opus encoder unavailable; using fixed packet: %v", encodeErr)
@@ -296,7 +304,7 @@ func TestSessionNegotiationAndCleanup(t *testing.T) {
 			}
 		}
 	} else {
-		if os.Getenv("XSTREAMING_REQUIRE_MEDIA_TESTS") == "1" {
+		if os.Getenv("XSTREAMING_REQUIRE_MEDIA_TESTS") == "1" || virtualPulse != "" {
 			t.Fatalf("ffmpeg unavailable: %v", lookupErr)
 		}
 		if err = mic.WriteSample(pionmedia.Sample{Data: sent, Duration: 20 * time.Millisecond}); err != nil {

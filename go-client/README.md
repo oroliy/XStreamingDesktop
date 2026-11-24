@@ -15,7 +15,7 @@ The `streaming` package currently implements session creation, state polling, ke
 
 The `peer` package provides a Pion WebRTC peer with audio/video transceivers and Xbox data channels. Local tests negotiate a peer connection, send a data-channel message, and receive a video RTP packet. The `session` package connects service signaling to the peer and handles provisioning and cleanup; it is connected to the preview UI but has not been tested with an Xbox.
 
-On Linux, the stream view can explicitly enable or disable the default PulseAudio microphone (including PipeWire's PulseAudio compatibility service). It requires an FFmpeg build with PulseAudio input and libopus. Capture is off until enabled and stops when disabled or the session ends. Tests exercise an isolated virtual PulseAudio source and send synthetic audio through FFmpeg and WebRTC to a local peer; microphone hardware and Xbox voice chat have not been validated. Microphone capture is not available on macOS or Windows yet.
+On Linux, the stream view can explicitly enable or disable the default PulseAudio microphone (including PipeWire's PulseAudio compatibility service). It requires an FFmpeg build with PulseAudio input and libopus. Capture is off until enabled and stops when disabled or the session ends. A test captures an isolated virtual PulseAudio source and sends it through FFmpeg and WebRTC to a local peer; microphone hardware and Xbox voice chat have not been validated. Microphone capture is not available on macOS or Windows yet.
 
 After a connection is established, the client allows 30 seconds for a disconnected connection to recover. If it does not recover, the client ends the session and attempts remote cleanup; a cleanup failure is shown in the interface.
 
