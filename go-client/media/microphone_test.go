@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -62,6 +63,24 @@ func TestEncodeMicrophoneEmitsDuringLiveInput(t *testing.T) {
 	})
 	if !errors.Is(err, gotSample) {
 		t.Fatalf("encoder did not produce audio while input remained open: %v", err)
+	}
+}
+
+// The configured server must be isolated and use a synthetic default source.
+func TestEncodeMicrophoneFromVirtualPulseAudio(t *testing.T) {
+	server := os.Getenv("XSTREAMING_TEST_PULSE_SERVER")
+	if server == "" {
+		t.Skip("no isolated PulseAudio test server configured")
+	}
+	t.Setenv("PULSE_SERVER", server)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	gotSample := errors.New("received virtual microphone sample")
+	err := EncodeMicrophone(ctx, []string{"-f", "pulse", "-i", "default"}, func(pionmedia.Sample) error {
+		return gotSample
+	})
+	if !errors.Is(err, gotSample) {
+		t.Fatalf("virtual PulseAudio capture failed: %v", err)
 	}
 }
 

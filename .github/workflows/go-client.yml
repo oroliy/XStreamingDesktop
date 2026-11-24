@@ -31,11 +31,35 @@ jobs:
       - name: Install media test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg pulseaudio pulseaudio-utils
           command -v ffmpeg
           command -v ffplay
       - run: go test -race ./...
       - run: go vet ./...
+      - name: Test virtual PulseAudio capture
+        run: |
+          pulse_dir="$RUNNER_TEMP/xstreaming-pulse"
+          mkdir -p "$pulse_dir/runtime" "$pulse_dir/state"
+          chmod 700 "$pulse_dir" "$pulse_dir/runtime" "$pulse_dir/state"
+          cat > "$pulse_dir/server.pa" <<EOF
+          load-module module-native-protocol-unix socket=$pulse_dir/runtime/native auth-anonymous=1
+          load-module module-null-source source_name=virtual_mic
+          set-default-source virtual_mic
+          EOF
+          PULSE_RUNTIME_PATH="$pulse_dir/runtime" PULSE_STATE_PATH="$pulse_dir/state" \
+            pulseaudio --daemonize=no --exit-idle-time=-1 --use-pid-file=no --disable-shm=true \
+            --log-target=stderr -n -F "$pulse_dir/server.pa" > "$pulse_dir/server.log" 2>&1 &
+          pulse_pid=$!
+          trap 'kill "$pulse_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..50}; do
+            if pactl -s "unix:$pulse_dir/runtime/native" info >/dev/null 2>&1; then break; fi
+            sleep 0.1
+          done
+          if ! pactl -s "unix:$pulse_dir/runtime/native" info >/dev/null 2>&1; then
+            cat "$pulse_dir/server.log"
+            exit 1
+          fi
+          XSTREAMING_TEST_PULSE_SERVER="unix:$pulse_dir/runtime/native" go test -race ./media -run '^TestEncodeMicrophoneFromVirtualPulseAudio$' -count=1
   cross-build:
     runs-on: ubuntu-latest
     strategy:
