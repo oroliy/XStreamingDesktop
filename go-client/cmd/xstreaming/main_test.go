@@ -370,3 +370,41 @@ func TestCloudRegionOptionsKeepUnavailableSelection(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestDisconnectAndPowerOffWaitsForCleanup(t *testing.T) {
+	done := make(chan error, 1)
+	result := make(chan error, 1)
+	go func() { result <- waitForStreamCleanup(context.Background(), done) }()
+	select {
+	case err := <-result:
+		t.Fatalf("returned before cleanup: %v", err)
+	default:
+	}
+	failure := errors.New("remote stop failed")
+	done <- failure
+	if err := <-result; !errors.Is(err, failure) {
+		t.Fatalf("lost cleanup error: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := waitForStreamCleanup(ctx, make(chan error)); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+}
+
+func TestDisconnectAndPowerOffButtonForHomeStream(t *testing.T) {
+	accountCtx, cancelAccount := context.WithCancel(context.Background())
+	defer cancelAccount()
+	streamCtx, cancelStream := context.WithCancel(context.Background())
+	defer cancelStream()
+	flag := &atomic.Bool{}
+	a := &app{prefs: settings.Defaults(), accountCtx: accountCtx, credentials: auth.NewSession("refresh"), streamCancel: cancelStream, streamHomeID: "console", streamDone: make(chan error), streamPowerOff: flag}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if err := tt.Click("Disconnect and power off"); err != nil {
+		t.Fatal(err)
+	}
+	if !flag.Load() || streamCtx.Err() == nil || !a.busy || a.streamCancel != nil || a.status != "Stopping stream before power-off…" {
+		t.Fatal("combined action did not start cleanup")
+	}
+	cancelAccount()
+}

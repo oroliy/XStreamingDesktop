@@ -45,6 +45,9 @@ type app struct {
 	accountCancel     context.CancelFunc
 	streamCancel      context.CancelFunc
 	streamWG          *sync.WaitGroup
+	streamDone        <-chan error
+	streamHomeID      string
+	streamPowerOff    *atomic.Bool
 	frame             *ui.Bitmap
 	decodedFPS        float64
 	framePending      atomic.Bool
@@ -76,17 +79,12 @@ func (a *app) view(c *ui.Context) {
 				a.win.ToggleFullScreen()
 			}
 			if ui.Button(c.Key("stop"), a.tr("Stop stream")).Clicked() {
-				if a.fullscreen && a.win != nil {
-					a.win.SetFullScreen(false)
+				a.stopStream(false)
+			}
+			if a.streamCancel != nil && a.streamHomeID != "" && a.streamDone != nil && a.streamPowerOff != nil && a.accountCtx != nil && a.credentials != nil {
+				if ui.Button(c.Key("stop-and-power-off"), a.tr("Disconnect and power off")).Clicked() {
+					a.stopStream(true)
 				}
-				a.streamCancel()
-				a.streamCancel = nil
-				a.busy = true
-				a.frame = nil
-				a.decodedFPS = 0
-				a.keyboardEnabled = false
-				a.keyboard.Set(false, protocol.Gamepad{})
-				a.status = "Stopping stream…"
 			}
 		}
 		if a.status != "" {
@@ -201,6 +199,7 @@ func (a *app) view(c *ui.Context) {
 						a.streamCancel = cancel
 						a.busy = true
 						a.status = "Starting stream…"
+						a.streamHomeID = console.ServerID
 						a.startStreamAsync(ctx, a.client, a.credentials, console.ServerID, a.prefs)
 					}
 				}
@@ -317,6 +316,7 @@ func (a *app) view(c *ui.Context) {
 						a.streamCancel = cancel
 						a.busy = true
 						a.status = "Starting cloud game…"
+						a.streamHomeID = ""
 						a.startStreamAsync(ctx, a.cloud, a.credentials, title.TitleID, a.prefs)
 					}
 				}
@@ -689,21 +689,78 @@ func (a *app) showFrame(img image.Image) {
 	}
 }
 
+// stopStream runs on the UI thread. A power-off request waits for cleanup first.
+func (a *app) stopStream(powerOff bool) {
+	if a.streamCancel == nil {
+		return
+	}
+	if powerOff {
+		flag, done := a.streamPowerOff, a.streamDone
+		ctx, credentials, id := a.accountCtx, a.credentials, a.streamHomeID
+		flag.Store(true)
+		go func() {
+			if err := waitForStreamCleanup(ctx, done); err != nil {
+				if ctx.Err() == nil {
+					a.update(func() {
+						if ctx.Err() == nil {
+							a.busy = false
+							a.status = "Stream cleanup failed; console was not powered off: " + err.Error()
+						}
+					})
+				}
+				return
+			}
+			a.powerOffConsole(ctx, credentials, id)
+		}()
+	}
+	if a.fullscreen && a.win != nil {
+		a.win.SetFullScreen(false)
+	}
+	a.streamCancel()
+	a.streamCancel = nil
+	a.busy = true
+	a.frame = nil
+	a.decodedFPS = 0
+	a.keyboardEnabled = false
+	a.keyboard.Set(false, protocol.Gamepad{})
+	if powerOff {
+		a.status = "Stopping stream before power-off…"
+	} else {
+		a.status = "Stopping stream…"
+	}
+}
+
+func waitForStreamCleanup(ctx context.Context, done <-chan error) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-done:
+		return err
+	}
+}
+
 // startStreamAsync is called on the UI thread before shutdown can begin waiting.
 func (a *app) startStreamAsync(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings) {
 	a.streamWG.Add(1)
+	done := make(chan error, 1)
+	flag := &atomic.Bool{}
+	a.streamDone, a.streamPowerOff = done, flag
 	go func() {
 		defer a.streamWG.Done()
-		a.startStream(ctx, client, credentials, target, prefs)
+		done <- a.startStream(ctx, client, credentials, target, prefs, flag)
+		close(done)
 	}()
 }
 
-func (a *app) startStream(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings) {
+func (a *app) startStream(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings, powerOff *atomic.Bool) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if err := media.CheckDependencies(); err != nil {
 		stopped := ctx.Err() != nil
 		a.update(func() {
+			if powerOff.Load() {
+				return
+			}
 			a.busy = false
 			a.streamCancel = nil
 			if a.fullscreen && a.win != nil {
@@ -715,7 +772,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 				a.status = err.Error()
 			}
 		})
-		return
+		return nil
 	}
 	onError := func(err error) {
 		if ctx.Err() == nil {
@@ -861,6 +918,9 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		var cleanupErr *session.CleanupError
 		errors.As(err, &cleanupErr)
 		a.update(func() {
+			if powerOff.Load() {
+				return
+			}
 			a.busy = false
 			a.streamCancel = nil
 			if a.fullscreen && a.win != nil {
@@ -874,7 +934,10 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 				a.status = "Stream failed: " + err.Error()
 			}
 		})
-		return
+		if cleanupErr != nil {
+			return cleanupErr.Err
+		}
+		return nil
 	}
 	go func() {
 		ticker := time.NewTicker(time.Second)
@@ -957,6 +1020,9 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	connectionTimedOut := failed && errors.Is(s.Err(), session.ErrConnectionTimeout)
 	cleanupErr := s.Close()
 	a.update(func() {
+		if powerOff.Load() {
+			return
+		}
 		a.busy = false
 		a.streamCancel = nil
 		if a.fullscreen && a.win != nil {
@@ -974,6 +1040,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 			a.status = streamEndStatus(failed, cleanupErr)
 		}
 	})
+	return cleanupErr
 }
 
 func decodedFrameRate(previous, current uint64, elapsed time.Duration) float64 {
