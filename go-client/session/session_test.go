@@ -404,3 +404,33 @@ func TestSignalingTimeoutCleansUp(t *testing.T) {
 		t.Fatalf("stops=%d signaling polls=%d", stops.Load(), polls.Load())
 	}
 }
+
+func TestRemoteCandidatesTryAllPaths(t *testing.T) {
+	failure := errors.New("candidate rejected")
+	candidates := []streaming.ICECandidate{
+		{Candidate: "bad", SDPMLineIndex: "0"},
+		{Candidate: "good", SDPMid: "video", SDPMLineIndex: "2"},
+		{Candidate: "a=end-of-candidates", SDPMLineIndex: "0"},
+	}
+	var attempted []string
+	err := addRemoteCandidates(candidates, func(candidate, mid string, line uint16) error {
+		attempted = append(attempted, candidate)
+		if candidate == "bad" {
+			return failure
+		}
+		if mid != "video" || line != 2 {
+			t.Fatalf("lost media identity: %s %d", mid, line)
+		}
+		return nil
+	})
+	if err != nil || len(attempted) != 2 || attempted[1] != "good" {
+		t.Fatalf("attempted=%v error=%v", attempted, err)
+	}
+	err = addRemoteCandidates(candidates[:1], func(string, string, uint16) error { return failure })
+	if !errors.Is(err, failure) {
+		t.Fatalf("lost failure: %v", err)
+	}
+	if err = addRemoteCandidates(nil, func(string, string, uint16) error { t.Fatal("unexpected candidate"); return nil }); err != nil {
+		t.Fatalf("empty exchange rejected: %v", err)
+	}
+}

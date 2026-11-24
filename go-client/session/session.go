@@ -130,14 +130,8 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 	if err != nil {
 		return nil, err
 	}
-	for _, candidate := range remote {
-		line, e := strconv.ParseUint(candidate.SDPMLineIndex, 10, 16)
-		if e != nil {
-			return nil, fmt.Errorf("invalid ICE m-line: %w", e)
-		}
-		if err = s.peer.AddCandidate(candidate.Candidate, candidate.SDPMid, uint16(line)); err != nil {
-			return nil, err
-		}
+	if err = addRemoteCandidates(remote, s.peer.AddCandidate); err != nil {
+		return nil, err
 	}
 	timeout := opts.ConnectionTimeout
 	if timeout <= 0 {
@@ -160,6 +154,31 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 	}()
 	go func() { <-live.Done(); _ = s.Close() }()
 	return s, nil
+}
+
+// addRemoteCandidates tries every candidate; a bad path must not hide a usable one.
+func addRemoteCandidates(candidates []streaming.ICECandidate, add func(string, string, uint16) error) error {
+	var failures []error
+	added := 0
+	for _, candidate := range candidates {
+		if candidate.Candidate == "" || candidate.Candidate == "a=end-of-candidates" || candidate.Candidate == "end-of-candidates" {
+			continue
+		}
+		line, err := strconv.ParseUint(candidate.SDPMLineIndex, 10, 16)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("invalid ICE m-line: %w", err))
+			continue
+		}
+		if err = add(candidate.Candidate, candidate.SDPMid, uint16(line)); err != nil {
+			failures = append(failures, fmt.Errorf("add ICE candidate for m-line %d: %w", line, err))
+			continue
+		}
+		added++
+	}
+	if added == 0 && len(failures) != 0 {
+		return fmt.Errorf("no usable remote ICE candidates: %w", errors.Join(failures...))
+	}
+	return nil
 }
 
 // Err reports why the session ended, and is nil while it is active.
