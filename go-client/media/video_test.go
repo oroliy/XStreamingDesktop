@@ -3,7 +3,9 @@ package media
 import (
 	"context"
 	"image"
+	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 )
@@ -76,4 +78,33 @@ func TestVideoDecoderStreamsBeforeEOF(t *testing.T) {
 	cancel()
 	<-writerDone
 	_ = decoder.Close()
+}
+
+// A broken decoder that continues writing must not make Close hang after a bad frame.
+func TestVideoDecoderStopsAfterInvalidFrame(t *testing.T) {
+	if os.Getenv("XSTREAMING_BAD_DECODER") == "1" {
+		for {
+			if _, err := os.Stdout.Write([]byte("invalid PNG data")); err != nil {
+				os.Exit(0)
+			}
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestVideoDecoderStopsAfterInvalidFrame$")
+	cmd.Env = append(os.Environ(), "XSTREAMING_BAD_DECODER=1")
+	decoder, err := newVideoDecoder(cmd, func(image.Image) { t.Error("unexpected frame") })
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- decoder.Close() }()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "decode frame") {
+			t.Fatalf("expected frame decode error, got %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("decoder did not stop after invalid output")
+	}
 }

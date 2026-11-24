@@ -33,6 +33,10 @@ func NewVideoDecoder(ctx context.Context, onFrame func(image.Image)) (*VideoDeco
 		return nil, errors.New("frame callback required")
 	}
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-loglevel", "error", "-probesize", "32", "-analyzeduration", "0", "-flags", "low_delay", "-f", "h264", "-i", "pipe:0", "-an", "-f", "image2pipe", "-vcodec", "png", "pipe:1")
+	return newVideoDecoder(cmd, onFrame)
+}
+
+func newVideoDecoder(cmd *exec.Cmd, onFrame func(image.Image)) (*VideoDecoder, error) {
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -57,6 +61,7 @@ func NewVideoDecoder(ctx context.Context, onFrame func(image.Image)) (*VideoDeco
 				d.mu.Lock()
 				d.err = e
 				d.mu.Unlock()
+				_ = cmd.Process.Kill()
 				break
 			}
 			img, e := png.Decode(reader)
@@ -65,6 +70,7 @@ func NewVideoDecoder(ctx context.Context, onFrame func(image.Image)) (*VideoDeco
 					d.mu.Lock()
 					d.err = fmt.Errorf("decode frame: %w", e)
 					d.mu.Unlock()
+					_ = cmd.Process.Kill()
 				}
 				break
 			}
@@ -73,7 +79,7 @@ func NewVideoDecoder(ctx context.Context, onFrame func(image.Image)) (*VideoDeco
 		err := cmd.Wait()
 		d.mu.Lock()
 		if err != nil {
-			d.err = processError("ffmpeg", err, diagnostic)
+			d.err = errors.Join(d.err, processError("ffmpeg", err, diagnostic))
 		}
 		d.mu.Unlock()
 	}()
