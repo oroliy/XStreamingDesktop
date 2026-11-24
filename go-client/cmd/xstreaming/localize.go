@@ -9,7 +9,7 @@ var chinese = map[string]string{
 	"WASD: left stick · TFGH: right stick · IJKL: buttons · arrows: D-pad · Esc: disable": "WASD：左摇杆 · TFGH：右摇杆 · IJKL：面键 · 方向键：方向键 · Esc：退出",
 	"Saved sign-in expired; please sign in again.":                                        "已保存的登录信息已失效，请重新登录。", "Sign in with Microsoft": "使用微软账号登录", "Sign out": "退出登录", "Consoles": "主机", "Refresh consoles": "刷新主机", "Wake console": "唤醒主机", "Start stream": "开始串流",
 	"Settings": "设置", "Resolution": "分辨率", "Language": "游戏语言", "Market": "目录市场", "Interface language": "界面语言", "Prefer IPv6 candidates": "优先使用 IPv6 候选地址", "Starting volume": "启动音量", "Stick dead zone": "摇杆死区",
-	"Keyboard controller": "键盘手柄", "On": "开机", "Off": "关机", "ConnectedStandby": "待机",
+	"Keyboard controller": "键盘手柄", "Controller input is still connecting.": "手柄输入仍在连接中。", "On": "开机", "Off": "关机", "ConnectedStandby": "待机",
 	"Cloud games": "云游戏", "Search games": "搜索游戏", "Reload cloud catalog": "重新加载云游戏目录", "Play": "开始游戏", "Visit: ": "访问：", "Code: ": "代码：",
 	"Stopping stream…": "正在停止串流…", "Canceling sign-in…": "正在取消登录…", "Sign-in canceled.": "登录已取消。", "Requesting sign-in code…": "正在获取登录代码…", "Complete sign-in in your browser.": "请在浏览器中完成登录。", "Connecting to Xbox…": "正在连接 Xbox…", "Restoring sign-in…": "正在恢复登录…", "Signing out…": "正在退出登录…", "Signed out.": "已退出登录。",
 	"Refreshing consoles…": "正在刷新主机…", "Sending wake request…": "正在发送唤醒请求…", "Wake request sent. The console may take a moment to start.": "唤醒请求已发送，主机可能需要一些时间启动。", "Starting stream…": "正在启动串流…", "Starting cloud game…": "正在启动云游戏…",

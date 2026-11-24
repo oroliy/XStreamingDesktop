@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -666,6 +667,8 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 			}
 		}
 	}
+	connected := make(chan struct{})
+	var connectedOnce sync.Once
 	s, err := session.Start(ctx, client, session.Options{Play: streaming.PlayOptions{Target: target, Resolution: prefs.ResolutionCode(), Locale: prefs.Language}, TransferToken: func(ctx context.Context) (string, error) {
 		return credentials.Transfer(ctx)
 	}, OnProgress: func(state string) {
@@ -709,6 +712,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		}
 		switch state {
 		case webrtc.PeerConnectionStateConnected:
+			connectedOnce.Do(func() { close(connected) })
 			a.update(func() {
 				if ctx.Err() == nil {
 					if a.frame == nil {
@@ -753,6 +757,38 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 		return
 	}
 	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.Done():
+			return
+		case <-connected:
+		}
+		monitorControllerReady(ctx, s.Done(), s.Ready(), func() bool {
+			return s.InputChannel().ReadyState() == webrtc.DataChannelStateOpen
+		}, 15*time.Second, 100*time.Millisecond, func(waiting bool) {
+			a.update(func() {
+				if ctx.Err() != nil {
+					return
+				}
+				select {
+				case <-s.Done():
+					return
+				default:
+				}
+				if waiting {
+					a.status = "Controller input is still connecting."
+				} else if a.status == "Controller input is still connecting." {
+					if a.frame == nil {
+						a.status = "Connected; waiting for video…"
+					} else {
+						a.status = "Streaming video."
+					}
+				}
+			})
+		})
+	}()
+	go func() {
 		if err := controller.Run(ctx, s.Input(), s.InputChannel(), s.Ready(), &a.keyboard, prefs.StickDeadzone/100); err != nil {
 			onError(err)
 		}
@@ -789,6 +825,40 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 			a.status = streamEndStatus(failed, cleanupErr)
 		}
 	})
+}
+
+// monitorControllerReady reports a delayed handshake without interrupting video.
+func monitorControllerReady(ctx context.Context, sessionDone, ready <-chan struct{}, inputOpen func() bool, timeout, poll time.Duration, notify func(bool)) {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	ticker := time.NewTicker(poll)
+	defer ticker.Stop()
+	warned, handshake := false, false
+	for {
+		if !handshake {
+			select {
+			case <-ready:
+				handshake = true
+			default:
+			}
+		}
+		if handshake && inputOpen() {
+			if warned {
+				notify(false)
+			}
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-sessionDone:
+			return
+		case <-timer.C:
+			warned = true
+			notify(true)
+		case <-ticker.C:
+		}
+	}
 }
 
 func streamEndStatus(failed bool, cleanupErr error) string {

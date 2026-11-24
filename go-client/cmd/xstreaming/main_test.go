@@ -12,7 +12,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestInitialAndLoadingView(t *testing.T) {
@@ -253,4 +255,43 @@ func TestNewCloudLoadCancelsPreviousRequest(t *testing.T) {
 	if second.Err() != context.Canceled {
 		t.Fatal("account cancellation did not stop current request")
 	}
+}
+
+func TestControllerHandshakeDelayAndRecovery(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ready := make(chan struct{})
+	sessionDone := make(chan struct{})
+	var inputOpen atomic.Bool
+	notifications := make(chan bool, 2)
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		monitorControllerReady(ctx, sessionDone, ready, inputOpen.Load, 10*time.Millisecond, time.Millisecond, func(waiting bool) { notifications <- waiting })
+	}()
+	select {
+	case waiting := <-notifications:
+		if !waiting {
+			t.Fatal("expected delayed input notification")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("missing delayed input notification")
+	}
+	close(ready)
+	inputOpen.Store(true)
+	select {
+	case waiting := <-notifications:
+		if waiting {
+			t.Fatal("expected recovery notification")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("missing recovery notification")
+	}
+	<-finished
+}
+
+func TestControllerMonitorStopsWithSession(t *testing.T) {
+	done := make(chan struct{})
+	close(done)
+	monitorControllerReady(context.Background(), done, make(chan struct{}), func() bool { return false }, time.Second, time.Millisecond, func(bool) { t.Error("notification after session ended") })
 }
