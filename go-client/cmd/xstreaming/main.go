@@ -184,7 +184,7 @@ func (a *app) view(c *ui.Context) {
 			}
 		}
 		if a.streamCancel != nil {
-			if runtime.GOOS == "linux" && a.micSession != nil && (a.streamConnected || a.micCancel != nil) {
+			if microphoneSupported(runtime.GOOS) && a.micSession != nil && (a.streamConnected || a.micCancel != nil) {
 				label := "Enable microphone"
 				if a.micCancel != nil {
 					label = "Disable microphone"

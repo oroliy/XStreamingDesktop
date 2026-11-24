@@ -32,7 +32,7 @@ func TestMicrophoneControlVisibility(t *testing.T) {
 	}
 	a.streamConnected = true
 	tt.Frame()
-	if got := tt.HasText("Enable microphone"); got != (runtime.GOOS == "linux") {
+	if got := tt.HasText("Enable microphone"); got != microphoneSupported(runtime.GOOS) {
 		t.Fatalf("unexpected microphone visibility: %v", got)
 	}
 	a.controlsHidden = true
@@ -44,8 +44,8 @@ func TestMicrophoneControlVisibility(t *testing.T) {
 }
 
 func TestMicrophoneStopButtonCancelsCapture(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("microphone control is Linux-only")
+	if !microphoneSupported(runtime.GOOS) {
+		t.Skip("microphone control is unavailable")
 	}
 	streamCtx, stopStream := context.WithCancel(context.Background())
 	defer stopStream()
@@ -75,13 +75,47 @@ func testMicrophoneTrack(t *testing.T) *webrtc.TrackLocalStaticSample {
 	return track
 }
 
+func TestMicrophoneInputArgs(t *testing.T) {
+	for _, tc := range []struct {
+		platform string
+		source   string
+		want     []string
+	}{
+		{"linux", "", []string{"-f", "pulse", "-i", "default"}},
+		{"linux", "alsa_input.example", []string{"-f", "pulse", "-i", "alsa_input.example"}},
+		{"darwin", "ignored", []string{"-f", "avfoundation", "-i", ":default"}},
+	} {
+		got, err := microphoneInputArgs(tc.platform, tc.source)
+		if err != nil || !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("platform=%s got=%v error=%v", tc.platform, got, err)
+		}
+	}
+	if _, err := microphoneInputArgs("windows", "default"); err == nil {
+		t.Fatal("accepted unsupported platform")
+	}
+}
+
+func TestUnsupportedMicrophoneDoesNotNegotiate(t *testing.T) {
+	s := &testMicrophoneSession{start: func(context.Context) (microphoneWriter, error) {
+		t.Fatal("unsupported platform negotiated audio")
+		return nil, nil
+	}}
+	err, stopErr := runMicrophone(context.Background(), context.Background(), "windows", "default", s, func(context.Context, []string, func(pionmedia.Sample) error) error {
+		t.Fatal("unsupported platform started capture")
+		return nil
+	}, func() {})
+	if err == nil || stopErr != nil || s.stops != 0 {
+		t.Fatalf("error=%v stop=%v calls=%d", err, stopErr, s.stops)
+	}
+}
+
 func TestMicrophoneCaptureStopsAndDetaches(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	s := &testMicrophoneSession{start: func(context.Context) (microphoneWriter, error) { return testMicrophoneTrack(t), nil }}
 	active := 0
 	source := "alsa_input.usb-example"
-	err, stopErr := runMicrophone(ctx, ctx, source, s, func(ctx context.Context, args []string, send func(pionmedia.Sample) error) error {
+	err, stopErr := runMicrophone(ctx, ctx, "linux", source, s, func(ctx context.Context, args []string, send func(pionmedia.Sample) error) error {
 		if !reflect.DeepEqual(args, []string{"-f", "pulse", "-i", source}) {
 			t.Fatal(args)
 		}
@@ -106,7 +140,7 @@ func TestCancelDuringMicrophoneNegotiationSkipsCapture(t *testing.T) {
 		cancel()
 		return track, nil
 	}}
-	err, stopErr := runMicrophone(context.Background(), micCtx, "default", s, func(context.Context, []string, func(pionmedia.Sample) error) error {
+	err, stopErr := runMicrophone(context.Background(), micCtx, "linux", "default", s, func(context.Context, []string, func(pionmedia.Sample) error) error {
 		t.Fatal("capture started after cancellation")
 		return nil
 	}, func() { t.Fatal("announced active after cancellation") })

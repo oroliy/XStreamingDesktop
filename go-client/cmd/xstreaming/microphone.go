@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -95,7 +96,11 @@ func (a *app) finishMicrophoneSources(sources []media.PulseSource, err error) {
 
 // runMicrophone negotiates first; cancellation during negotiation prevents capture
 // without interrupting signaling for the enclosing stream.
-func runMicrophone(streamCtx, micCtx context.Context, source string, s microphoneSession, encode microphoneEncoder, active func()) (error, error) {
+func runMicrophone(streamCtx, micCtx context.Context, platform, source string, s microphoneSession, encode microphoneEncoder, active func()) (error, error) {
+	input, err := microphoneInputArgs(platform, source)
+	if err != nil {
+		return err, nil
+	}
 	track, err := s.StartMicrophone(streamCtx)
 	if err != nil {
 		return err, nil
@@ -104,7 +109,7 @@ func runMicrophone(streamCtx, micCtx context.Context, source string, s microphon
 		return err, s.StopMicrophone()
 	}
 	announced := false
-	err = encode(micCtx, []string{"-f", "pulse", "-i", source}, func(sample pionmedia.Sample) error {
+	err = encode(micCtx, input, func(sample pionmedia.Sample) error {
 		if err := micCtx.Err(); err != nil {
 			return err
 		}
@@ -121,6 +126,25 @@ func runMicrophone(streamCtx, micCtx context.Context, source string, s microphon
 		err = errors.New("audio capture ended")
 	}
 	return err, s.StopMicrophone()
+}
+
+func microphoneSupported(platform string) bool {
+	return platform == "linux" || platform == "darwin"
+}
+
+func microphoneInputArgs(platform, source string) ([]string, error) {
+	switch platform {
+	case "linux":
+		if source == "" {
+			source = "default"
+		}
+		return []string{"-f", "pulse", "-i", source}, nil
+	case "darwin":
+		// AVFoundation's audio-only default avoids opening a camera.
+		return []string{"-f", "avfoundation", "-i", ":default"}, nil
+	default:
+		return nil, errors.New("microphone capture is unavailable on this platform")
+	}
 }
 
 func (a *app) saveMicrophoneSource() {
@@ -178,7 +202,7 @@ func (a *app) captureMicrophone(streamCtx, micCtx context.Context, cancel contex
 		}
 	}()
 	defer close(finished)
-	err, stopErr := runMicrophone(streamCtx, micCtx, source, liveMicrophoneSession{s}, media.EncodeMicrophone, func() {
+	err, stopErr := runMicrophone(streamCtx, micCtx, runtime.GOOS, source, liveMicrophoneSession{s}, media.EncodeMicrophone, func() {
 		a.update(func() {
 			if a.micCtx == micCtx && micCtx.Err() == nil {
 				a.micStatus = "Microphone on."

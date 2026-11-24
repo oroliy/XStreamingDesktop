@@ -2,7 +2,7 @@
 
 这是使用 MyGo 和 Go 重写的早期预览，代码仍在开发中。手柄震动尚未实现；微软账号登录、云游戏及 Xbox 主机串流流程、音视频和手柄输入尚未经过真实账号与设备的完整验证。原 Electron 版本仍位于仓库根目录。
 
-Linux 串流界面可手动启用或关闭 PulseAudio 麦克风（包括 PipeWire 的 PulseAudio 兼容服务），需要 FFmpeg 支持 PulseAudio 输入和 libopus。默认使用系统输入；要使用其他设备，可在设置中刷新输入列表、查看设备描述并选择保存，也可手动填写名称（可通过 `pactl list short sources` 查看），留空则恢复默认。麦克风默认关闭，关闭或会话结束时停止采集。编码和 WebRTC 发送使用合成音频通过了本地测试，真实麦克风与 Xbox 语音尚未验证；macOS 和 Windows 暂不支持麦克风采集。
+Linux 串流界面可手动启用或关闭 PulseAudio 麦克风（包括 PipeWire 的 PulseAudio 兼容服务）。默认使用系统输入；要使用其他设备，可在设置中刷新输入列表、查看设备描述并选择保存，也可手动填写名称（可通过 `pactl list short sources` 查看），留空则恢复默认。macOS 上同一控制会尝试通过 AVFoundation 采集系统默认输入，需要系统麦克风权限。FFmpeg 必须支持对应输入后端和 libopus。麦克风默认关闭，关闭或会话结束时停止采集。虚拟 PulseAudio 输入和 WebRTC 发送已通过本地测试，真实麦克风、macOS 采集与 Xbox 语音尚未验证；Windows 暂不支持麦克风采集。
 
 ## 下载与运行
 
