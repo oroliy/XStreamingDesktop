@@ -40,3 +40,21 @@ func TestResolve(t *testing.T) {
 		t.Fatalf("calls=%d titles=%d first=%+v", calls, len(got), got[0])
 	}
 }
+
+func TestResolveCloudIDFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"Products":{"ABC":{"ProductTitle":"Game","XCloudTitleId":"catalog-id"}}}`)
+	}))
+	defer server.Close()
+	title := streaming.Title{}
+	title.Details.ProductID = "abc"
+	out, err := (&Client{http: server.Client(), endpoint: server.URL}).Resolve(context.Background(), []streaming.Title{title}, "", "")
+	if err != nil || len(out) != 1 || out[0].TitleID != "catalog-id" {
+		t.Fatal(out, err)
+	}
+	title.TitleID = "service-id"
+	out, err = (&Client{http: server.Client(), endpoint: server.URL}).Resolve(context.Background(), []streaming.Title{title}, "", "")
+	if err != nil || out[0].TitleID != "service-id" {
+		t.Fatal(out, err)
+	}
+}

@@ -25,7 +25,7 @@ func NewClient() *Client {
 	return &Client{http: &http.Client{Timeout: 15 * time.Second}, endpoint: "https://catalog.gamepass.com/v3/products"}
 }
 
-// Resolve enriches known title IDs with catalog names, preserving entries absent from the catalog.
+// Resolve adds catalog names and fallback cloud IDs to service titles, preserving entries absent from the catalog.
 func (c *Client) Resolve(ctx context.Context, titles []streaming.Title, market, language string) ([]streaming.Title, error) {
 	if market == "" {
 		market = "US"
@@ -40,7 +40,11 @@ func (c *Client) Resolve(ctx context.Context, titles []streaming.Title, market, 
 			ids = append(ids, t.Details.ProductID)
 		}
 	}
-	names := map[string]string{}
+	type productInfo struct {
+		Name    string
+		CloudID string
+	}
+	products := map[string]productInfo{}
 	for start := 0; start < len(ids); start += 100 {
 		end := min(start+100, len(ids))
 		b, _ := json.Marshal(map[string]any{"Products": ids[start:end]})
@@ -84,11 +88,15 @@ func (c *Client) Resolve(ctx context.Context, titles []streaming.Title, market, 
 			return nil, err
 		}
 		for id, product := range payload.Products {
-			names[strings.ToUpper(id)] = product.ProductTitle
+			products[strings.ToUpper(id)] = productInfo{Name: product.ProductTitle, CloudID: product.XCloudTitleID}
 		}
 	}
 	for i := range out {
-		out[i].Name = names[strings.ToUpper(out[i].Details.ProductID)]
+		product := products[strings.ToUpper(out[i].Details.ProductID)]
+		out[i].Name = product.Name
+		if out[i].TitleID == "" {
+			out[i].TitleID = product.CloudID
+		}
 		if out[i].Name == "" {
 			out[i].Name = out[i].Details.ProductID
 		}
