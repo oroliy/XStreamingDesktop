@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"log"
+	"net/url"
 	"strings"
 	"sync/atomic"
 
@@ -84,6 +85,16 @@ func (a *app) view(c *ui.Context) {
 		if a.code != "" {
 			ui.Text(c, "Visit: "+a.uri)
 			ui.Text(c, "Code: "+a.code).FontSize(24).Bold()
+			if verificationURLAllowed(a.uri) {
+				if ui.Button(c.Key("open-verification"), "Open Microsoft sign-in page").Clicked() {
+					address := a.uri
+					c.OpenURLThen(address, func(err error) {
+						if err != nil && a.uri == address {
+							a.status = "Unable to open browser; enter the address manually."
+						}
+					})
+				}
+			}
 		}
 		if a.streamCancel != nil {
 			label := "Enable keyboard controller"
@@ -225,6 +236,21 @@ func (a *app) view(c *ui.Context) {
 			}
 		})
 	})
+}
+
+// verificationURLAllowed prevents opening non-HTTPS or unrelated URLs received from a service.
+func verificationURLAllowed(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.User != nil || (u.Port() != "" && u.Port() != "443") {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	for _, domain := range []string{"microsoft.com", "microsoftonline.com", "live.com"} {
+		if host == domain || strings.HasSuffix(host, "."+domain) {
+			return true
+		}
+	}
+	return false
 }
 func (a *app) update(fn func()) { a.win.Update(fn) }
 func (a *app) fail(err error) {

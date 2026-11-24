@@ -168,3 +168,20 @@ func TestFirstVideoFrameUpdatesStatus(t *testing.T) {
 		t.Fatal("frame update obscured error or replaced bitmap")
 	}
 }
+
+func TestVerificationPageButton(t *testing.T) {
+	a := &app{busy: true, code: "CODE", uri: "https://microsoft.com/devicelogin"}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if err := tt.Click("Open Microsoft sign-in page"); err != nil {
+		t.Fatal(err)
+	}
+	urls := tt.OpenedURLs()
+	if len(urls) != 1 || urls[0] != a.uri {
+		t.Fatal(urls)
+	}
+	for _, invalid := range []string{"http://microsoft.com/devicelogin", "https://microsoft.com.evil.test/", "https://evil.test/?microsoft.com", "https://user@microsoft.com/", "file:///tmp/a"} {
+		if verificationURLAllowed(invalid) {
+			t.Fatalf("accepted %q", invalid)
+		}
+	}
+}
