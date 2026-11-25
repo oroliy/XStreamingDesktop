@@ -54,6 +54,7 @@ func controllerButtonNames(buttons protocol.Buttons) string {
 func pollControllerTest(ctx context.Context, sample func() []controllerTestPad, publish func([]controllerTestPad), interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	var previous []controllerTestPad
 	for {
 		if ctx.Err() != nil {
 			return
@@ -62,7 +63,10 @@ func pollControllerTest(ctx context.Context, sample func() []controllerTestPad, 
 		if ctx.Err() != nil {
 			return
 		}
-		publish(pads)
+		if !slices.Equal(previous, pads) {
+			previous = slices.Clone(pads)
+			publish(pads)
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -80,18 +84,16 @@ func (a *app) startControllerTest() {
 	a.controllerTestCancel = cancel
 	a.controllerTestGeneration++
 	generation := a.controllerTestGeneration
-	var previous []controllerTestPad
 	go pollControllerTest(ctx, readControllerTestPads, func(pads []controllerTestPad) {
-		if slices.Equal(previous, pads) {
-			return
-		}
-		previous = pads
 		a.update(func() {
-			if ctx.Err() == nil && a.controllerTestCancel != nil && a.controllerTestGeneration == generation && a.streamCancel == nil {
-				a.controllerTestPads = pads
-			}
+			a.applyControllerTestPads(ctx, generation, pads)
 		})
 	}, 100*time.Millisecond)
+}
+func (a *app) applyControllerTestPads(ctx context.Context, generation uint64, pads []controllerTestPad) {
+	if ctx.Err() == nil && a.controllerTestCancel != nil && a.controllerTestGeneration == generation && a.streamCancel == nil {
+		a.controllerTestPads = pads
+	}
 }
 func (a *app) stopControllerTest() {
 	if a.controllerTestCancel != nil {

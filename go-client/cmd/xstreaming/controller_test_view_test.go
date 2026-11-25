@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -46,5 +47,55 @@ func TestControllerTestPollPublishesSamples(t *testing.T) {
 	}, time.Millisecond)
 	if len(received) != 1 || received[0] != want[0] {
 		t.Fatalf("unexpected sample: %+v", received)
+	}
+}
+
+func TestControllerTestPollReportsHotplugAndChanges(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	shared := []controllerTestPad{{name: "pad"}}
+	var got [][]controllerTestPad
+	calls := 0
+	pollControllerTest(ctx, func() []controllerTestPad {
+		calls++
+		switch calls {
+		case 1, 2:
+			return shared
+		case 3:
+			shared[0].state.Buttons = protocol.A
+			return shared
+		default:
+			return nil
+		}
+	}, func(pads []controllerTestPad) {
+		got = append(got, slices.Clone(pads))
+		if len(got) == 3 {
+			cancel()
+		}
+	}, time.Millisecond)
+	if len(got) != 3 || calls != 4 || len(got[0]) != 1 || got[0][0].state.Buttons != 0 || got[1][0].state.Buttons != protocol.A || len(got[2]) != 0 {
+		t.Fatalf("calls=%d, samples=%+v", calls, got)
+	}
+}
+
+func TestControllerTestDiscardsLateUpdates(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := &app{controllerTestCancel: cancel, controllerTestGeneration: 2}
+	pads := []controllerTestPad{{name: "pad"}}
+	a.applyControllerTestPads(ctx, 1, pads)
+	if len(a.controllerTestPads) != 0 {
+		t.Fatal("accepted old generation")
+	}
+	a.streamCancel = cancel
+	a.applyControllerTestPads(ctx, 2, pads)
+	if len(a.controllerTestPads) != 0 {
+		t.Fatal("accepted update during stream")
+	}
+	a.streamCancel = nil
+	cancel()
+	a.applyControllerTestPads(ctx, 2, pads)
+	if len(a.controllerTestPads) != 0 {
+		t.Fatal("accepted canceled update")
 	}
 }
