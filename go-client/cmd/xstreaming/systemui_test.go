@@ -196,3 +196,13 @@ func TestCanceledQueuedPromptIsSkipped(t *testing.T) {
 		t.Fatal("canceled queued prompt was shown or keyboard not restored")
 	}
 }
+
+func TestRemovingQueuedPromptClearsBackingReference(t *testing.T) {
+	p := &systemPrompt{text: "sensitive default"}
+	a := &app{systemQueue: []*systemPrompt{p}}
+	backing := a.systemQueue
+	a.dismissSystemPrompt(p)
+	if len(a.systemQueue) != 0 || backing[0] != nil {
+		t.Fatal("removed prompt is still retained by the queue")
+	}
+}

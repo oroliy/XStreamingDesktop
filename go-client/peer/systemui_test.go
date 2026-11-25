@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -77,5 +79,32 @@ func TestSystemUIShutdownAndUnsupported(t *testing.T) {
 	}
 	if err := r.Cancel(); err == nil {
 		t.Fatal("canceled after shutdown")
+	}
+}
+
+func TestSystemUIConcurrentCompletionAndRemoteCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var sends atomic.Int32
+	requests := make(chan *SystemUIRequest, 1)
+	m := newSystemUIRequests(ctx, func(protocol.Envelope) error { sends.Add(1); return nil }, func(r *SystemUIRequest) { requests <- r })
+	if !m.handle(protocol.Envelope{Type: "TransactionStart", ID: "race", CV: "server.0", Target: SystemUIVirtualKeyboard, Content: `{}`}) {
+		t.Fatal("request not handled")
+	}
+	r := <-requests
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); <-start; _ = r.Complete(map[string]string{"Text": "answer"}) }()
+	go func() { defer wg.Done(); <-start; m.handle(protocol.Envelope{Type: "SenderCancel", ID: "race"}) }()
+	close(start)
+	wg.Wait()
+	select {
+	case <-r.Done():
+	default:
+		t.Fatal("request still active")
+	}
+	if sends.Load() > 1 {
+		t.Fatalf("sent %d replies", sends.Load())
 	}
 }

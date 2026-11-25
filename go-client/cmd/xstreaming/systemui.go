@@ -206,7 +206,9 @@ func (a *app) dismissSystemPrompt(p *systemPrompt) {
 	if a.systemPrompt != p {
 		for i, queued := range a.systemQueue {
 			if queued == p {
-				a.systemQueue = append(a.systemQueue[:i], a.systemQueue[i+1:]...)
+				copy(a.systemQueue[i:], a.systemQueue[i+1:])
+				a.systemQueue[len(a.systemQueue)-1] = nil
+				a.systemQueue = a.systemQueue[:len(a.systemQueue)-1]
 				return
 			}
 		}
