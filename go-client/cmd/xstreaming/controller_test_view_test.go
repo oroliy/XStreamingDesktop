@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/plugins/game/gamepad"
 	"github.com/egoist/mygo/ui"
 	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
 )
@@ -97,5 +98,46 @@ func TestControllerTestDiscardsLateUpdates(t *testing.T) {
 	a.applyControllerTestPads(ctx, 2, pads)
 	if len(a.controllerTestPads) != 0 {
 		t.Fatal("accepted canceled update")
+	}
+}
+
+type fakeControllerVibrator struct {
+	played    *gamepad.Pad
+	closed    bool
+	available bool
+}
+
+func (v *fakeControllerVibrator) Play(p *gamepad.Pad) bool { v.played = p; return v.available }
+func (v *fakeControllerVibrator) Close()                   { v.closed = true }
+
+func TestControllerTestVibrationAndCleanup(t *testing.T) {
+	pad := new(gamepad.Pad)
+	vibrator := &fakeControllerVibrator{available: true}
+	a := &app{controllerTestCancel: func() {}, controllerTestRumble: vibrator, controllerTestPads: []controllerTestPad{{name: "Example pad", device: pad}}}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if err := tt.Click("Test vibration"); err != nil {
+		t.Fatal(err)
+	}
+	if vibrator.played != pad {
+		t.Fatal("vibration was sent to the wrong device")
+	}
+	if err := tt.Click("Stop controller test"); err != nil {
+		t.Fatal(err)
+	}
+	if !vibrator.closed || a.controllerTestRumble != nil {
+		t.Fatal("vibration tester was not closed")
+	}
+}
+
+func TestControllerTestVibrationUnavailable(t *testing.T) {
+	pad := new(gamepad.Pad)
+	vibrator := &fakeControllerVibrator{}
+	a := &app{controllerTestCancel: func() {}, controllerTestRumble: vibrator, controllerTestPads: []controllerTestPad{{name: "Example pad", device: pad}}}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if err := tt.Click("Test vibration"); err != nil {
+		t.Fatal(err)
+	}
+	if a.status != "Controller vibration test unavailable." {
+		t.Fatalf("status=%q", a.status)
 	}
 }

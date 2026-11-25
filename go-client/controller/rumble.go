@@ -23,6 +23,29 @@ func xinputSlot(name string) (int, bool) {
 	return number - 1, true
 }
 
+// VibrationTester owns short diagnostic effects separately from a stream.
+type VibrationTester struct{ manager *rumbleManager }
+
+func NewVibrationTester() *VibrationTester {
+	return &VibrationTester{manager: newRumbleManager(setPadVibration)}
+}
+
+// Play starts a short test only for a currently connected MyGo XInput pad.
+// A true return means the effect was scheduled, not that hardware vibrated.
+func (t *VibrationTester) Play(pad *gamepad.Pad) bool {
+	if pad == nil || !pad.Connected() {
+		return false
+	}
+	slot, ok := xinputSlot(pad.Name())
+	if !ok {
+		return false
+	}
+	return t.manager.play(uint8(slot), pad, protocol.Vibration{LeftMotor: 0.5, RightMotor: 0.5, Duration: 300 * time.Millisecond})
+}
+
+// Close stops any active diagnostic effect and prevents new effects.
+func (t *VibrationTester) Close() { t.manager.close() }
+
 type rumbleEffect struct {
 	pad   *gamepad.Pad
 	timer *time.Timer
@@ -41,15 +64,15 @@ func newRumbleManager(set func(*gamepad.Pad, float64, float64)) *rumbleManager {
 
 // play replaces the previous effect in this streaming slot. Timers guard their
 // identity so an old deadline cannot stop a newer effect.
-func (m *rumbleManager) play(index uint8, pad *gamepad.Pad, v protocol.Vibration) {
+func (m *rumbleManager) play(index uint8, pad *gamepad.Pad, v protocol.Vibration) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed || m.set == nil || pad == nil {
-		return
+		return false
 	}
 	m.stop(index)
 	if v.Duration <= 0 || (v.LeftMotor == 0 && v.RightMotor == 0) {
-		return
+		return true
 	}
 	effect := &rumbleEffect{pad: pad}
 	m.effects[index] = effect
@@ -61,6 +84,7 @@ func (m *rumbleManager) play(index uint8, pad *gamepad.Pad, v protocol.Vibration
 			m.stop(index)
 		}
 	})
+	return true
 }
 
 // stop must be called while m.mu is held.

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -14,8 +15,14 @@ import (
 )
 
 type controllerTestPad struct {
-	name  string
-	state protocol.Gamepad
+	name   string
+	state  protocol.Gamepad
+	device *gamepad.Pad
+}
+
+type controllerTestVibrator interface {
+	Play(*gamepad.Pad) bool
+	Close()
 }
 
 func readControllerTestPads() []controllerTestPad {
@@ -27,7 +34,7 @@ func readControllerTestPads() []controllerTestPad {
 		}
 		state := pad.State()
 		if pad.Connected() {
-			result = append(result, controllerTestPad{name: pad.Name(), state: controller.Map(state)})
+			result = append(result, controllerTestPad{name: pad.Name(), state: controller.Map(state), device: pad})
 		}
 	}
 	return result
@@ -82,6 +89,11 @@ func (a *app) startControllerTest() {
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.controllerTestCancel = cancel
+	if runtime.GOOS == "windows" {
+		tester := controller.NewVibrationTester()
+		a.controllerTestRumble = tester
+		go func() { <-ctx.Done(); tester.Close() }()
+	}
 	a.controllerTestGeneration++
 	generation := a.controllerTestGeneration
 	go pollControllerTest(ctx, readControllerTestPads, func(pads []controllerTestPad) {
@@ -99,6 +111,10 @@ func (a *app) stopControllerTest() {
 	if a.controllerTestCancel != nil {
 		a.controllerTestCancel()
 		a.controllerTestCancel = nil
+	}
+	if a.controllerTestRumble != nil {
+		a.controllerTestRumble.Close()
+		a.controllerTestRumble = nil
 	}
 	a.controllerTestGeneration++
 	a.controllerTestPads = nil
@@ -132,5 +148,10 @@ func (a *app) controllerTestView(c *ui.Context) {
 		}
 		ui.Text(c, fmt.Sprintf("L: %.2f, %.2f  R: %.2f, %.2f", pad.state.LeftX, pad.state.LeftY, pad.state.RightX, pad.state.RightY))
 		ui.Text(c, fmt.Sprintf("LT: %.2f  RT: %.2f", pad.state.LeftTrigger, pad.state.RightTrigger))
+		if a.controllerTestRumble != nil && pad.device != nil {
+			if ui.Button(c.Key(fmt.Sprintf("controller-rumble-%d", i)), a.tr("Test vibration")).Clicked() && !a.controllerTestRumble.Play(pad.device) {
+				a.status = "Controller vibration test unavailable."
+			}
+		}
 	}
 }

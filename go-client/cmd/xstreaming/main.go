@@ -88,6 +88,7 @@ type app struct {
 	controllerTestCancel     context.CancelFunc
 	controllerTestGeneration uint64
 	controllerTestPads       []controllerTestPad
+	controllerTestRumble     controllerTestVibrator
 }
 
 func (a *app) view(c *ui.Context) {
@@ -1510,7 +1511,10 @@ func main() {
 		a.win = mygo.NewWindow(mygo.WindowOptions{Title: "XStreaming (Go preview)", Content: ui.View(a.view)})
 		a.win.OnEnterFullScreen(func() { a.fullscreen = true; a.win.Invalidate() })
 		a.win.OnLeaveFullScreen(func() { a.fullscreen = false; a.win.Invalidate() })
-		a.win.OnClosed(a.cancel)
+		a.win.OnClosed(func() {
+			a.stopControllerTest()
+			a.cancel()
+		})
 		go a.restore(accountCtx, prefs)
 	})
 	err := mygo.App.Run()
