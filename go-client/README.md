@@ -25,6 +25,8 @@ The preview reads up to four controllers through MyGo’s gamepad plugin. Linux 
 
 Cloud catalog market and language and streaming resolution are configurable in the preview. The catalog reloads automatically after changing market or language. The market affects product metadata, not account entitlement. The cloud streaming region can be selected separately from those returned for the account. The game list supports search and pagination. If a catalog batch fails, successfully loaded names remain visible and other entries use product IDs. Cloud access depends on account entitlements and region.
 
+Service-requested system dialogs and virtual keyboards are not implemented yet. Cloud games that require them may be blocked. The preview's console text control only applies to home streaming.
+
 Login persistence uses MyGo Secrets (Keychain, Windows Credential Manager or Linux Secret Service). If unavailable, sign-in works for the current run without persistence.
 
 GitHub Actions uploads unsigned preview binaries as short-lived workflow artifacts for supported targets. They do not include FFmpeg or ffplay. On macOS, GUI apps may inherit a different PATH from a terminal; if the executables are not found, start the preview from a terminal where they are available. On macOS and Linux, run `chmod +x xstreaming` after extracting the artifact.
