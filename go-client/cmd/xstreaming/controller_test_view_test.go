@@ -140,4 +140,11 @@ func TestControllerTestVibrationUnavailable(t *testing.T) {
 	if a.status != "Controller vibration test unavailable." {
 		t.Fatalf("status=%q", a.status)
 	}
+	vibrator.available = true
+	if err := tt.Click("Test vibration"); err != nil {
+		t.Fatal(err)
+	}
+	if a.status != "" {
+		t.Fatalf("stale failure after successful retry: %q", a.status)
+	}
 }

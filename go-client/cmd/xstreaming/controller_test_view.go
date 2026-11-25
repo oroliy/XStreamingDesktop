@@ -118,6 +118,9 @@ func (a *app) stopControllerTest() {
 	}
 	a.controllerTestGeneration++
 	a.controllerTestPads = nil
+	if a.status == "Controller vibration test unavailable." {
+		a.status = ""
+	}
 }
 func (a *app) controllerTestView(c *ui.Context) {
 	label := "Test controllers"
@@ -152,8 +155,12 @@ func (a *app) controllerTestView(c *ui.Context) {
 		ui.Text(c, fmt.Sprintf("L: %.2f, %.2f  R: %.2f, %.2f", pad.state.LeftX, pad.state.LeftY, pad.state.RightX, pad.state.RightY))
 		ui.Text(c, fmt.Sprintf("LT: %.2f  RT: %.2f", pad.state.LeftTrigger, pad.state.RightTrigger))
 		if a.controllerTestRumble != nil && pad.device != nil {
-			if ui.Button(c.Key(fmt.Sprintf("controller-rumble-%d", i)), a.tr("Test vibration")).Clicked() && !a.controllerTestRumble.Play(pad.device) {
-				a.status = "Controller vibration test unavailable."
+			if ui.Button(c.Key(fmt.Sprintf("controller-rumble-%d", i)), a.tr("Test vibration")).Clicked() {
+				if !a.controllerTestRumble.Play(pad.device) {
+					a.status = "Controller vibration test unavailable."
+				} else if a.status == "Controller vibration test unavailable." {
+					a.status = ""
+				}
 			}
 		}
 	}
