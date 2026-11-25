@@ -31,60 +31,63 @@ import (
 )
 
 type app struct {
-	win               *mygo.Window
-	ctx               context.Context
-	cancel            context.CancelFunc
-	busy              bool
-	cancelingLogin    bool
-	status, code, uri string
-	wakeWarning       string
-	consoles          []streaming.Console
-	client            *streaming.Client
-	cloud             *streaming.Client
-	titles            []streaming.Title
-	cloudStatus       string
-	cloudRegions      []string
-	credentials       *auth.Session
-	accountCtx        context.Context
-	accountCancel     context.CancelFunc
-	streamCancel      context.CancelFunc
-	streamCtx         context.Context
-	streamConnected   bool
-	inputReady        bool
-	inputWarning      string
-	micSession        *session.Session
-	micCtx            context.Context
-	micCancel         context.CancelFunc
-	micStopping       bool
-	micStatus         string
-	micSourceDraft    string
-	micSources        []media.AudioSource
-	micSourceChoice   string
-	micSourcesLoading bool
-	micSourcesStatus  string
-	consoleText       string
-	textStatus        string
-	textSending       bool
-	streamWG          *sync.WaitGroup
-	streamDone        <-chan error
-	streamHomeID      string
-	streamPowerOff    *atomic.Bool
-	frame             *ui.Bitmap
-	decodedFPS        float64
-	videoMbps         float64
-	showPerformance   bool
-	cloudGeneration   atomic.Uint64
-	cloudCancel       context.CancelFunc
-	prefs             settings.Settings
-	settingsPath      string
-	filter            string
-	cloudPage         int
-	keyboard          controller.Keyboard
-	keyboardEnabled   bool
-	fullscreen        bool
-	controlsHidden    bool
-	systemPrompt      *systemPrompt
-	systemQueue       []*systemPrompt
+	win                      *mygo.Window
+	ctx                      context.Context
+	cancel                   context.CancelFunc
+	busy                     bool
+	cancelingLogin           bool
+	status, code, uri        string
+	wakeWarning              string
+	consoles                 []streaming.Console
+	client                   *streaming.Client
+	cloud                    *streaming.Client
+	titles                   []streaming.Title
+	cloudStatus              string
+	cloudRegions             []string
+	credentials              *auth.Session
+	accountCtx               context.Context
+	accountCancel            context.CancelFunc
+	streamCancel             context.CancelFunc
+	streamCtx                context.Context
+	streamConnected          bool
+	inputReady               bool
+	inputWarning             string
+	micSession               *session.Session
+	micCtx                   context.Context
+	micCancel                context.CancelFunc
+	micStopping              bool
+	micStatus                string
+	micSourceDraft           string
+	micSources               []media.AudioSource
+	micSourceChoice          string
+	micSourcesLoading        bool
+	micSourcesStatus         string
+	consoleText              string
+	textStatus               string
+	textSending              bool
+	streamWG                 *sync.WaitGroup
+	streamDone               <-chan error
+	streamHomeID             string
+	streamPowerOff           *atomic.Bool
+	frame                    *ui.Bitmap
+	decodedFPS               float64
+	videoMbps                float64
+	showPerformance          bool
+	cloudGeneration          atomic.Uint64
+	cloudCancel              context.CancelFunc
+	prefs                    settings.Settings
+	settingsPath             string
+	filter                   string
+	cloudPage                int
+	keyboard                 controller.Keyboard
+	keyboardEnabled          bool
+	fullscreen               bool
+	controlsHidden           bool
+	systemPrompt             *systemPrompt
+	systemQueue              []*systemPrompt
+	controllerTestCancel     context.CancelFunc
+	controllerTestGeneration uint64
+	controllerTestPads       []controllerTestPad
 }
 
 func (a *app) view(c *ui.Context) {
@@ -330,6 +333,7 @@ func (a *app) view(c *ui.Context) {
 					}
 				}
 			}
+			a.controllerTestView(c)
 			ui.Text(c, a.tr("Settings")).Bold()
 			if microphoneSourceSettingsSupported(runtime.GOOS) {
 				ui.Row(c).Gap(8).Children(func() {
@@ -1012,6 +1016,7 @@ func powerOffAfterCleanup(ctx context.Context, done <-chan error, powerOff func(
 
 // startStreamAsync is called on the UI thread before shutdown can begin waiting.
 func (a *app) startStreamAsync(ctx context.Context, client *streaming.Client, credentials *auth.Session, target string, prefs settings.Settings, wakeBefore bool) {
+	a.stopControllerTest()
 	a.streamWG.Add(1)
 	done := make(chan error, 1)
 	flag := &atomic.Bool{}

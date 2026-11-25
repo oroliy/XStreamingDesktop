@@ -3,6 +3,7 @@ package main
 import "strings"
 
 var chinese = map[string]string{
+	"Test controllers": "测试手柄", "Stop controller test": "结束手柄测试", "No controllers detected.": "未检测到手柄。", "Buttons: none": "按键：无", "Buttons: ": "按键：",
 	"Text input": "文本输入", "Submit": "提交", "Cancel": "取消",
 	"Experimental preview — controller and playback support are unverified.": "实验预览版：手柄和播放功能尚未经实机验证。",
 	"Full screen": "全屏", "Exit full screen": "退出全屏", "Stop stream": "停止串流", "Disconnect and power off": "断开连接并关机", "Cancel sign-in": "取消登录",
