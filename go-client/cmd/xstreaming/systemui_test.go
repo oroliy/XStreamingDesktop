@@ -1,12 +1,44 @@
 package main
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/oroliy/XStreamingDesktop/go-client/peer"
 )
+
+func TestSystemPromptRestoresKeyboardOnlyForActiveStream(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, tc := range []struct {
+		name                  string
+		restore, active, same bool
+		want                  bool
+	}{
+		{"previously enabled", true, true, true, true},
+		{"previously disabled", false, true, true, false},
+		{"stream stopped", true, false, true, false},
+		{"another stream", true, true, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &app{streamCtx: ctx}
+			if tc.active {
+				a.streamCancel = cancel
+			}
+			if !tc.same {
+				a.streamCtx = context.Background()
+			}
+			p := &systemPrompt{streamCtx: ctx, restoreKeyboard: tc.restore}
+			a.systemPrompt = p
+			a.dismissSystemPrompt(p)
+			if a.keyboardEnabled != tc.want || a.systemPrompt != nil {
+				t.Fatalf("enabled=%v prompt=%v", a.keyboardEnabled, a.systemPrompt)
+			}
+		})
+	}
+}
 
 type fakeSystemRequest struct {
 	target, payload string
@@ -89,5 +121,23 @@ func TestSystemMessageFallbackCommands(t *testing.T) {
 	}
 	if !reflect.DeepEqual(p.buttons, []systemButton{{"First", 0}, {"Second", 7}}) || p.cancelIndex == nil || *p.cancelIndex != 7 {
 		t.Fatalf("prompt=%+v", p)
+	}
+}
+
+func TestSystemPromptEscapeRestoresKeyboard(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r := &fakeSystemRequest{target: peer.SystemUIVirtualKeyboard, payload: `{}`, done: make(chan struct{})}
+	p, err := parseSystemPrompt(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.streamCtx, p.restoreKeyboard = ctx, true
+	a := &app{systemPrompt: p, streamCtx: ctx, streamCancel: cancel}
+	tt := ui.NewTester(a.view, 1024, 768)
+	tt.KeyDown(ui.KeyEscape)
+	tt.KeyUp(ui.KeyEscape)
+	if !r.canceled || !a.keyboardEnabled || a.systemPrompt != nil {
+		t.Fatalf("canceled=%v enabled=%v prompt=%v", r.canceled, a.keyboardEnabled, a.systemPrompt)
 	}
 }

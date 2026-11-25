@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,6 +53,8 @@ type systemPrompt struct {
 	maxLength                int
 	buttons                  []systemButton
 	cancelIndex              *int
+	streamCtx                context.Context
+	restoreKeyboard          bool
 }
 
 func parseSystemPrompt(r systemRequest) (*systemPrompt, error) {
@@ -137,7 +140,7 @@ func (a *app) showSystemPrompt(c *ui.Context) {
 	}
 	select {
 	case <-p.request.Done():
-		a.systemPrompt = nil
+		a.dismissSystemPrompt(p)
 		return
 	default:
 	}
@@ -183,7 +186,7 @@ func (a *app) finishSystemPrompt(p *systemPrompt, value any, cancel bool) {
 	if a.systemPrompt != p {
 		return
 	}
-	a.systemPrompt = nil
+	a.dismissSystemPrompt(p)
 	var err error
 	if cancel {
 		err = p.request.Cancel()
@@ -192,5 +195,15 @@ func (a *app) finishSystemPrompt(p *systemPrompt, value any, cancel bool) {
 	}
 	if err != nil {
 		a.status = "Unable to answer system request: " + err.Error()
+	}
+}
+
+func (a *app) dismissSystemPrompt(p *systemPrompt) {
+	if a.systemPrompt != p {
+		return
+	}
+	a.systemPrompt = nil
+	if p.restoreKeyboard && p.streamCtx != nil && p.streamCtx.Err() == nil && a.streamCtx == p.streamCtx && a.streamCancel != nil {
+		a.keyboardEnabled = true
 	}
 }

@@ -1150,6 +1150,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 				_ = request.Cancel()
 				return
 			}
+			prompt.streamCtx, prompt.restoreKeyboard = ctx, a.keyboardEnabled
 			a.keyboardEnabled = false
 			a.keyboard.Set(false, protocol.Gamepad{})
 			a.systemPrompt = prompt
@@ -1157,7 +1158,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 				<-request.Done()
 				a.update(func() {
 					if a.systemPrompt != nil && a.systemPrompt.request == request {
-						a.systemPrompt = nil
+						a.dismissSystemPrompt(prompt)
 					}
 				})
 			}()
