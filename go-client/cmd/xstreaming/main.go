@@ -83,10 +83,12 @@ type app struct {
 	keyboardEnabled   bool
 	fullscreen        bool
 	controlsHidden    bool
+	systemPrompt      *systemPrompt
 }
 
 func (a *app) view(c *ui.Context) {
 	ui.Column(c).Fill().Center().Gap(12).Children(func() {
+		a.showSystemPrompt(c)
 		if a.streamCancel != nil && a.controlsHidden {
 			if a.frame != nil {
 				ui.Image(c, a.frame).FillWidth().Grow(1).Fit(videoFit(a.prefs.VideoFit))
@@ -1132,7 +1134,35 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	}
 	connected := make(chan struct{})
 	var connectedOnce sync.Once
-	s, err := session.Start(ctx, client, session.Options{Play: streaming.PlayOptions{Target: target, Resolution: prefs.ResolutionCode(), Locale: prefs.Language}, TransferToken: func(ctx context.Context) (string, error) {
+	s, err := session.Start(ctx, client, session.Options{Play: streaming.PlayOptions{Target: target, Resolution: prefs.ResolutionCode(), Locale: prefs.Language}, OnSystemUI: func(request *peer.SystemUIRequest) {
+		a.update(func() {
+			if ctx.Err() != nil || a.streamCtx != ctx || a.systemPrompt != nil {
+				_ = request.Cancel()
+				return
+			}
+			select {
+			case <-request.Done():
+				return
+			default:
+			}
+			prompt, err := parseSystemPrompt(request)
+			if err != nil {
+				_ = request.Cancel()
+				return
+			}
+			a.keyboardEnabled = false
+			a.keyboard.Set(false, protocol.Gamepad{})
+			a.systemPrompt = prompt
+			go func() {
+				<-request.Done()
+				a.update(func() {
+					if a.systemPrompt != nil && a.systemPrompt.request == request {
+						a.systemPrompt = nil
+					}
+				})
+			}()
+		})
+	}, TransferToken: func(ctx context.Context) (string, error) {
 		return credentials.Transfer(ctx)
 	}, OnProgress: func(state string) {
 		var text string

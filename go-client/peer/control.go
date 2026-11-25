@@ -14,8 +14,13 @@ import (
 
 // StartControl installs the initial message handshake and control messages.
 // Call before negotiating. The caller cancels ctx before closing the peer.
-// Other message targets and controller input are not handled yet.
+// Unsupported message targets are answered as unhandled.
 func (p *Peer) StartControl(ctx context.Context, onError func(error)) {
+	p.StartControlWithUI(ctx, onError, nil)
+}
+
+// StartControlWithUI additionally dispatches supported system UI requests.
+func (p *Peer) StartControlWithUI(ctx context.Context, onError func(error), onUI func(*SystemUIRequest)) {
 	message, control := p.Channel("message"), p.Channel("control")
 	state := protocol.NewMessageChannel()
 	var mu sync.Mutex
@@ -32,6 +37,7 @@ func (p *Peer) StartControl(ctx context.Context, onError func(error)) {
 		}
 		return dc.SendText(string(b))
 	}
+	uiRequests := newSystemUIRequests(ctx, func(v protocol.Envelope) error { return send(message, v) }, onUI)
 	start := func() {
 		mu.Lock()
 		if !ready || !controlOpen || started {
@@ -72,6 +78,9 @@ func (p *Peer) StartControl(ctx context.Context, onError func(error)) {
 			return
 		}
 		if envelope.Type != "HandshakeAck" {
+			if uiRequests.handle(envelope) {
+				return
+			}
 			if reply := state.Incoming(envelope); reply != nil {
 				report(send(message, reply))
 			}

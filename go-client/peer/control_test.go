@@ -18,7 +18,10 @@ func TestControlHandshake(t *testing.T) {
 	}
 	defer p.Close()
 	errors := make(chan error, 4)
-	p.StartControl(ctx, func(err error) { errors <- err })
+	uiErrors := make(chan error, 1)
+	p.StartControlWithUI(ctx, func(err error) { errors <- err }, func(request *SystemUIRequest) {
+		uiErrors <- request.Complete(map[string]string{"Text": "hello"})
+	})
 	remote, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		t.Fatal(err)
@@ -26,6 +29,7 @@ func TestControlHandshake(t *testing.T) {
 	defer remote.Close()
 	got := make(chan string, 16)
 	replies := make(chan string, 1)
+	uiReplies := make(chan map[string]any, 1)
 	remote.OnDataChannel(func(dc *webrtc.DataChannel) {
 		dc.OnMessage(func(msg webrtc.DataChannelMessage) {
 			var body map[string]any
@@ -35,9 +39,13 @@ func TestControlHandshake(t *testing.T) {
 			if dc.Label() == "message" && body["type"] == "Handshake" {
 				_ = dc.SendText(`{"type":"HandshakeAck","version":"messageV1"}`)
 				_ = dc.SendText(`{"type":"TransactionStart","id":"t1","target":"/unsupported","cv":"server.2"}`)
+				_ = dc.SendText(`{"type":"TransactionStart","id":"ui1","target":"/streaming/systemUi/messages/ShowVirtualKeyboard","content":"{}","cv":"ui.1"}`)
 			}
 			if dc.Label() == "message" && body["type"] == "Unhandled" {
 				replies <- body["cv"].(string)
+			}
+			if dc.Label() == "message" && body["type"] == "TransactionComplete" {
+				uiReplies <- body
 			}
 			if dc.Label() == "control" {
 				if name, ok := body["message"].(string); ok {
@@ -68,6 +76,22 @@ func TestControlHandshake(t *testing.T) {
 	}
 	if err = p.SetAnswer(remote.LocalDescription().SDP); err != nil {
 		t.Fatal(err)
+	}
+	select {
+	case err := <-uiErrors:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	select {
+	case reply := <-uiReplies:
+		if reply["id"] != "ui1" || reply["cv"] != "ui.3" || reply["content"] != `{"Text":"hello"}` {
+			t.Fatalf("unexpected system UI reply: %v", reply)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
 	}
 	select {
 	case cv := <-replies:

@@ -47,6 +47,7 @@ type Options struct {
 	OnError           func(error)
 	OnProgress        func(string)
 	OnConnectionState func(webrtc.PeerConnectionState)
+	OnSystemUI        func(*peer.SystemUIRequest)
 	PreferIPv6        bool
 	ConnectionTimeout time.Duration // zero defaults to 45 seconds after signaling
 	HandshakeTimeout  time.Duration // zero defaults to 30 seconds after connecting
@@ -111,7 +112,7 @@ func Start(ctx context.Context, client *streaming.Client, opts Options) (_ *Sess
 			cancel(errors.New("WebRTC connection failed"))
 		}
 	})
-	s.peer.StartControl(live, opts.OnError)
+	s.peer.StartControlWithUI(live, opts.OnError, opts.OnSystemUI)
 	offer, err := s.peer.Offer(signaling)
 	if err != nil {
 		return nil, fmt.Errorf("create WebRTC offer: %w", err)

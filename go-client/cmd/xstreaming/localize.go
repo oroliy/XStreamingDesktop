@@ -3,6 +3,7 @@ package main
 import "strings"
 
 var chinese = map[string]string{
+	"Text input": "文本输入", "Submit": "提交", "Cancel": "取消",
 	"Experimental preview — controller and playback support are unverified.": "实验预览版：手柄和播放功能尚未经实机验证。",
 	"Full screen": "全屏", "Exit full screen": "退出全屏", "Stop stream": "停止串流", "Disconnect and power off": "断开连接并关机", "Cancel sign-in": "取消登录",
 	"Press Xbox button": "短按 Xbox 按钮", "Hold Xbox button": "长按 Xbox 按钮",
