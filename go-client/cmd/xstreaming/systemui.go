@@ -10,6 +10,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/oroliy/XStreamingDesktop/go-client/peer"
+	"github.com/oroliy/XStreamingDesktop/go-client/protocol"
 )
 
 type systemButton struct {
@@ -203,10 +204,43 @@ func (a *app) finishSystemPrompt(p *systemPrompt, value any, cancel bool) {
 
 func (a *app) dismissSystemPrompt(p *systemPrompt) {
 	if a.systemPrompt != p {
+		for i, queued := range a.systemQueue {
+			if queued == p {
+				a.systemQueue = append(a.systemQueue[:i], a.systemQueue[i+1:]...)
+				return
+			}
+		}
 		return
 	}
 	a.systemPrompt = nil
 	if p.restoreKeyboard && p.streamCtx != nil && p.streamCtx.Err() == nil && a.streamCtx == p.streamCtx && a.streamCancel != nil {
 		a.keyboardEnabled = true
+	}
+	a.showNextSystemPrompt()
+}
+
+func (a *app) enqueueSystemPrompt(p *systemPrompt) {
+	a.systemQueue = append(a.systemQueue, p)
+	a.showNextSystemPrompt()
+}
+
+func (a *app) showNextSystemPrompt() {
+	for a.systemPrompt == nil && len(a.systemQueue) > 0 {
+		p := a.systemQueue[0]
+		a.systemQueue[0] = nil
+		a.systemQueue = a.systemQueue[1:]
+		select {
+		case <-p.request.Done():
+			continue
+		default:
+		}
+		if p.streamCtx == nil || p.streamCtx.Err() != nil || a.streamCtx != p.streamCtx || a.streamCancel == nil {
+			_ = p.request.Cancel()
+			continue
+		}
+		p.restoreKeyboard = a.keyboardEnabled
+		a.keyboardEnabled = false
+		a.keyboard.Set(false, protocol.Gamepad{})
+		a.systemPrompt = p
 	}
 }

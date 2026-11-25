@@ -84,6 +84,7 @@ type app struct {
 	fullscreen        bool
 	controlsHidden    bool
 	systemPrompt      *systemPrompt
+	systemQueue       []*systemPrompt
 }
 
 func (a *app) view(c *ui.Context) {
@@ -1136,7 +1137,7 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 	var connectedOnce sync.Once
 	s, err := session.Start(ctx, client, session.Options{Play: streaming.PlayOptions{Target: target, Resolution: prefs.ResolutionCode(), Locale: prefs.Language}, OnSystemUI: func(request *peer.SystemUIRequest) {
 		a.update(func() {
-			if ctx.Err() != nil || a.streamCtx != ctx || a.systemPrompt != nil {
+			if ctx.Err() != nil || a.streamCtx != ctx || a.streamCancel == nil {
 				_ = request.Cancel()
 				return
 			}
@@ -1150,16 +1151,12 @@ func (a *app) startStream(ctx context.Context, client *streaming.Client, credent
 				_ = request.Cancel()
 				return
 			}
-			prompt.streamCtx, prompt.restoreKeyboard = ctx, a.keyboardEnabled
-			a.keyboardEnabled = false
-			a.keyboard.Set(false, protocol.Gamepad{})
-			a.systemPrompt = prompt
+			prompt.streamCtx = ctx
+			a.enqueueSystemPrompt(prompt)
 			go func() {
 				<-request.Done()
 				a.update(func() {
-					if a.systemPrompt != nil && a.systemPrompt.request == request {
-						a.dismissSystemPrompt(prompt)
-					}
+					a.dismissSystemPrompt(prompt)
 				})
 			}()
 		})

@@ -141,3 +141,58 @@ func TestSystemPromptEscapeRestoresKeyboard(t *testing.T) {
 		t.Fatalf("canceled=%v enabled=%v prompt=%v", r.canceled, a.keyboardEnabled, a.systemPrompt)
 	}
 }
+
+func TestSystemPromptsAreQueuedAndRestoreKeyboard(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := &app{streamCtx: ctx, streamCancel: cancel, keyboardEnabled: true}
+	first := &fakeSystemRequest{target: peer.SystemUIMessageDialog, payload: `{"TitleText":"First request","CommandLabel1":"Continue"}`, done: make(chan struct{})}
+	second := &fakeSystemRequest{target: peer.SystemUIVirtualKeyboard, payload: `{"TitleText":"Second request","DefaultText":"answer"}`, done: make(chan struct{})}
+	p1, err := parseSystemPrompt(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2, err := parseSystemPrompt(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p1.streamCtx, p2.streamCtx = ctx, ctx
+	a.enqueueSystemPrompt(p1)
+	a.enqueueSystemPrompt(p2)
+	if a.systemPrompt != p1 || len(a.systemQueue) != 1 || a.keyboardEnabled {
+		t.Fatal("prompts not queued")
+	}
+	tt := ui.NewTester(a.view, 1024, 768)
+	if err := tt.Click("Continue"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.systemPrompt != p2 || !tt.HasText("Second request") || a.keyboardEnabled {
+		t.Fatal("second prompt not shown")
+	}
+	if err := tt.Click("Submit"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.keyboardEnabled || a.systemPrompt != nil || len(a.systemQueue) != 0 {
+		t.Fatal("keyboard not restored after queue")
+	}
+}
+
+func TestCanceledQueuedPromptIsSkipped(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := &app{streamCtx: ctx, streamCancel: cancel, keyboardEnabled: true}
+	r1 := &fakeSystemRequest{target: peer.SystemUIVirtualKeyboard, payload: `{}`, done: make(chan struct{})}
+	r2 := &fakeSystemRequest{target: peer.SystemUIVirtualKeyboard, payload: `{}`, done: make(chan struct{})}
+	p1, _ := parseSystemPrompt(r1)
+	p2, _ := parseSystemPrompt(r2)
+	p1.streamCtx, p2.streamCtx = ctx, ctx
+	a.enqueueSystemPrompt(p1)
+	a.enqueueSystemPrompt(p2)
+	close(r2.done)
+	a.dismissSystemPrompt(p2)
+	a.finishSystemPrompt(p1, nil, true)
+	if a.systemPrompt != nil || len(a.systemQueue) != 0 || !a.keyboardEnabled {
+		t.Fatal("canceled queued prompt was shown or keyboard not restored")
+	}
+}
