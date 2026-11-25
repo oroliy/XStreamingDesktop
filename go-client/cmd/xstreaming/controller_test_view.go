@@ -136,6 +136,9 @@ func (a *app) controllerTestView(c *ui.Context) {
 	}
 	if len(a.controllerTestPads) == 0 {
 		ui.Text(c, a.tr("No controllers detected."))
+		if runtime.GOOS == "linux" {
+			ui.Text(c, a.tr("If a connected controller is missing, check read access to /dev/input/event*."))
+		}
 		return
 	}
 	for i, pad := range a.controllerTestPads {
