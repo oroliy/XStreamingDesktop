@@ -40,7 +40,7 @@ func TestSystemKeyboardRoundTripOverWebRTC(t *testing.T) {
 			}
 			if envelope.Type == "Handshake" {
 				_ = dc.SendText(`{"type":"HandshakeAck","version":"messageV1"}`)
-				payload := protocol.Envelope{Type: "TransactionStart", ID: "keyboard", CV: "server.4", Target: peer.SystemUIVirtualKeyboard, Content: `{"TitleText":"Enter name","MaxLength":20}`}
+				payload := protocol.Envelope{Type: "TransactionStart", ID: "keyboard", CV: "server.4", Target: peer.SystemUIVirtualKeyboard, Content: `{"TitleText":"Enter name","MaxLength":3}`}
 				b, _ := json.Marshal(payload)
 				_ = dc.SendText(string(b))
 			}
@@ -91,14 +91,14 @@ func TestSystemKeyboardRoundTripOverWebRTC(t *testing.T) {
 	if !tt.HasText("Enter name") {
 		t.Fatal("keyboard prompt was not shown")
 	}
-	tt.Type("玩家")
+	tt.Type("玩家四五")
 	if err := tt.Click("Submit"); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case reply := <-responses:
 		var value map[string]string
-		if reply.ID != "keyboard" || reply.CV != "server.6" || json.Unmarshal([]byte(reply.Content), &value) != nil || value["Text"] != "玩家" {
+		if reply.ID != "keyboard" || reply.CV != "server.6" || json.Unmarshal([]byte(reply.Content), &value) != nil || value["Text"] != "玩家四" {
 			t.Fatalf("unexpected response: %+v", reply)
 		}
 	case err := <-errors:

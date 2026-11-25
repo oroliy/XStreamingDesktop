@@ -64,6 +64,9 @@ func TestSystemKeyboardPrompt(t *testing.T) {
 	if !tt.HasText("Sign in") || !tt.HasText("Enter password") {
 		t.Fatal(tt.Texts())
 	}
+	if tt.HasText("secret") {
+		t.Fatal("password is visible as plain text")
+	}
 	if err := tt.Click("Submit"); err != nil {
 		t.Fatal(err)
 	}
