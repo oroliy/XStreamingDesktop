@@ -23,6 +23,13 @@ func xinputSlot(name string) (int, bool) {
 	return number - 1, true
 }
 
+func connectedXInputSlot(pad *gamepad.Pad) (int, bool) {
+	if pad == nil || !pad.Connected() {
+		return 0, false
+	}
+	return xinputSlot(pad.Name())
+}
+
 // VibrationTester owns short diagnostic effects separately from a stream.
 type VibrationTester struct{ manager *rumbleManager }
 
@@ -33,10 +40,7 @@ func NewVibrationTester() *VibrationTester {
 // Play starts a short test only for a currently connected MyGo XInput pad.
 // A true return means XInput accepted the effect, not that hardware vibrated.
 func (t *VibrationTester) Play(pad *gamepad.Pad) bool {
-	if pad == nil || !pad.Connected() {
-		return false
-	}
-	slot, ok := xinputSlot(pad.Name())
+	slot, ok := connectedXInputSlot(pad)
 	if !ok {
 		return false
 	}

@@ -22,8 +22,9 @@ func setPadVibration(pad *gamepad.Pad, left, right float64) {
 }
 
 func setPadVibrationChecked(pad *gamepad.Pad, left, right float64) bool {
+	// A disconnected MyGo pad may have had its XInput slot reassigned.
 	// MyGo's Windows gamepad backend names its XInput slots this way.
-	slot, ok := xinputSlot(pad.Name())
+	slot, ok := connectedXInputSlot(pad)
 	if !ok {
 		return false
 	}

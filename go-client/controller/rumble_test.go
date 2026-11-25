@@ -30,6 +30,14 @@ func TestXInputSlotUsesOnlyExactMyGoNames(t *testing.T) {
 	}
 }
 
+func TestDisconnectedPadCannotUseXInputSlot(t *testing.T) {
+	for _, pad := range []*gamepad.Pad{nil, new(gamepad.Pad)} {
+		if slot, ok := connectedXInputSlot(pad); ok {
+			t.Fatalf("accepted disconnected pad for slot %d", slot)
+		}
+	}
+}
+
 func TestRumbleReplacementDisconnectAndClose(t *testing.T) {
 	var mu sync.Mutex
 	var calls []motorCall
