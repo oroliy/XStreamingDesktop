@@ -145,30 +145,33 @@ func (a *app) showSystemPrompt(c *ui.Context) {
 	default:
 	}
 	modal := ui.Modal(c, &p.open, func() {
-		if p.title != "" {
-			ui.Text(c, p.title).Bold()
-		}
-		if p.description != "" {
-			ui.Text(c, p.description)
-		}
-		if p.request.TargetName() == peer.SystemUIVirtualKeyboard {
-			input := ui.TextInput(c.Key("system-ui-text"), &p.text).Label(a.tr("Text input")).MaxLength(p.maxLength).Width(320).AutoFocus()
-			if p.password {
-				input.Password()
+		_, height := c.Size()
+		ui.Scroll(c.Key("system-ui-scroll")).MaxHeight(max(80, height-100)).Gap(8).Children(func() {
+			if p.title != "" {
+				ui.Text(c, p.title).Bold()
 			}
-			if ui.Button(c.Key("system-ui-submit"), a.tr("Submit")).Clicked() {
-				a.finishSystemPrompt(p, map[string]string{"Text": p.text}, false)
+			if p.description != "" {
+				ui.Text(c, p.description)
 			}
-		} else {
-			for i, button := range p.buttons {
-				if ui.Button(c.Key(fmt.Sprintf("system-ui-button-%d", i)), button.label).Clicked() {
-					a.finishSystemPrompt(p, map[string]int{"Result": button.index}, false)
+			if p.request.TargetName() == peer.SystemUIVirtualKeyboard {
+				input := ui.TextInput(c.Key("system-ui-text"), &p.text).Label(a.tr("Text input")).MaxLength(p.maxLength).Width(320).AutoFocus()
+				if p.password {
+					input.Password()
+				}
+				if ui.Button(c.Key("system-ui-submit"), a.tr("Submit")).Clicked() {
+					a.finishSystemPrompt(p, map[string]string{"Text": p.text}, false)
+				}
+			} else {
+				for i, button := range p.buttons {
+					if ui.Button(c.Key(fmt.Sprintf("system-ui-button-%d", i)), button.label).Clicked() {
+						a.finishSystemPrompt(p, map[string]int{"Result": button.index}, false)
+					}
 				}
 			}
-		}
-		if ui.Button(c.Key("system-ui-cancel"), a.tr("Cancel")).Clicked() {
-			a.cancelSystemPrompt(p)
-		}
+			if ui.Button(c.Key("system-ui-cancel"), a.tr("Cancel")).Clicked() {
+				a.cancelSystemPrompt(p)
+			}
+		})
 	})
 	if modal.Dismissed() && a.systemPrompt == p {
 		a.cancelSystemPrompt(p)
