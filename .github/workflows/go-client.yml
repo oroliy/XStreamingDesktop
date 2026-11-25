@@ -31,11 +31,15 @@ jobs:
       - name: Install media test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg pulseaudio pulseaudio-utils
+          sudo apt-get install -y ffmpeg pulseaudio pulseaudio-utils xvfb xauth x11-utils libgtk-3-0t64
           command -v ffmpeg
           command -v ffplay
       - run: go test -race ./...
       - run: go vet ./...
+      - name: Smoke test native Linux window
+        run: |
+          go build -o "$RUNNER_TEMP/xstreaming-smoke" ./cmd/xstreaming
+          bash scripts/smoke-linux.sh "$RUNNER_TEMP/xstreaming-smoke"
       - name: Test virtual PulseAudio capture
         run: |
           pulse_dir="$RUNNER_TEMP/xstreaming-pulse"
