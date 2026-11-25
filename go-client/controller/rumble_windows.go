@@ -18,10 +18,14 @@ var xinputVibration struct {
 type xinputMotors struct{ left, right uint16 }
 
 func setPadVibration(pad *gamepad.Pad, left, right float64) {
+	_ = setPadVibrationChecked(pad, left, right)
+}
+
+func setPadVibrationChecked(pad *gamepad.Pad, left, right float64) bool {
 	// MyGo's Windows gamepad backend names its XInput slots this way.
 	slot, ok := xinputSlot(pad.Name())
 	if !ok {
-		return
+		return false
 	}
 	xinputVibration.once.Do(func() {
 		for _, name := range []string{"xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"} {
@@ -33,8 +37,9 @@ func setPadVibration(pad *gamepad.Pad, left, right float64) {
 		}
 	})
 	if xinputVibration.proc == nil {
-		return
+		return false
 	}
 	motors := xinputMotors{uint16(left * 65535), uint16(right * 65535)}
-	_, _, _ = xinputVibration.proc.Call(uintptr(slot), uintptr(unsafe.Pointer(&motors)))
+	result, _, _ := xinputVibration.proc.Call(uintptr(slot), uintptr(unsafe.Pointer(&motors)))
+	return result == 0
 }

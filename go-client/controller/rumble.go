@@ -27,11 +27,11 @@ func xinputSlot(name string) (int, bool) {
 type VibrationTester struct{ manager *rumbleManager }
 
 func NewVibrationTester() *VibrationTester {
-	return &VibrationTester{manager: newRumbleManager(setPadVibration)}
+	return &VibrationTester{manager: newCheckedRumbleManager(setPadVibrationChecked)}
 }
 
 // Play starts a short test only for a currently connected MyGo XInput pad.
-// A true return means the effect was scheduled, not that hardware vibrated.
+// A true return means XInput accepted the effect, not that hardware vibrated.
 func (t *VibrationTester) Play(pad *gamepad.Pad) bool {
 	if pad == nil || !pad.Connected() {
 		return false
@@ -54,11 +54,21 @@ type rumbleEffect struct {
 type rumbleManager struct {
 	mu      sync.Mutex
 	effects map[uint8]*rumbleEffect
-	set     func(*gamepad.Pad, float64, float64)
+	set     func(*gamepad.Pad, float64, float64) bool
 	closed  bool
 }
 
 func newRumbleManager(set func(*gamepad.Pad, float64, float64)) *rumbleManager {
+	if set == nil {
+		return newCheckedRumbleManager(nil)
+	}
+	return newCheckedRumbleManager(func(pad *gamepad.Pad, left, right float64) bool {
+		set(pad, left, right)
+		return true
+	})
+}
+
+func newCheckedRumbleManager(set func(*gamepad.Pad, float64, float64) bool) *rumbleManager {
 	return &rumbleManager{effects: make(map[uint8]*rumbleEffect), set: set}
 }
 
@@ -76,7 +86,10 @@ func (m *rumbleManager) play(index uint8, pad *gamepad.Pad, v protocol.Vibration
 	}
 	effect := &rumbleEffect{pad: pad}
 	m.effects[index] = effect
-	m.set(pad, v.LeftMotor, v.RightMotor)
+	if !m.set(pad, v.LeftMotor, v.RightMotor) {
+		delete(m.effects, index)
+		return false
+	}
 	effect.timer = time.AfterFunc(v.Duration, func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()

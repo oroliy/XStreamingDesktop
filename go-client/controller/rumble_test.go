@@ -228,3 +228,28 @@ func TestVibrationMailboxKeepsLatestPerController(t *testing.T) {
 		t.Fatal("mailbox did not clear")
 	}
 }
+
+func TestCheckedRumbleReportsBackendFailure(t *testing.T) {
+	pad := new(gamepad.Pad)
+	calls := 0
+	succeed := false
+	m := newCheckedRumbleManager(func(_ *gamepad.Pad, left, right float64) bool {
+		calls++
+		return succeed
+	})
+	v := protocol.Vibration{LeftMotor: 0.5, RightMotor: 0.5, Duration: time.Hour}
+	if m.play(0, pad, v) {
+		t.Fatal("accepted failed motor request")
+	}
+	if len(m.effects) != 0 || calls != 1 {
+		t.Fatal("failed effect was retained")
+	}
+	succeed = true
+	if !m.play(0, pad, v) {
+		t.Fatal("rejected successful motor request")
+	}
+	m.close()
+	if calls != 3 || m.play(0, pad, v) {
+		t.Fatalf("cleanup failed, calls=%d", calls)
+	}
+}
