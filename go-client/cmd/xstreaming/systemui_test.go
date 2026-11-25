@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -212,5 +215,35 @@ func TestRemovingQueuedPromptClearsBackingReference(t *testing.T) {
 	a.dismissSystemPrompt(p)
 	if len(a.systemQueue) != 0 || backing[0] != nil {
 		t.Fatal("removed prompt is still retained by the queue")
+	}
+}
+
+func TestSystemKeyboardPasswordRenderingMasksText(t *testing.T) {
+	imageFor := func(text string, password bool) []byte {
+		scope := 0
+		if password {
+			scope = 31
+		}
+		payload, err := json.Marshal(map[string]any{"TitleText": "Entry", "DefaultText": text, "InputScope": scope})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := &fakeSystemRequest{target: peer.SystemUIVirtualKeyboard, payload: string(payload), done: make(chan struct{})}
+		p, err := parseSystemPrompt(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a := &app{systemPrompt: p}
+		tt := ui.NewTester(a.view, 1024, 768)
+		tt.SetFocused(false)
+		return slices.Clone(tt.Image().Pix)
+	}
+	maskedA, maskedB := imageFor("secret", true), imageFor("xxxxxx", true)
+	if !bytes.Equal(maskedA, maskedB) {
+		t.Fatal("password rendering depends on the actual characters")
+	}
+	plainA, plainB := imageFor("secret", false), imageFor("xxxxxx", false)
+	if bytes.Equal(plainA, plainB) {
+		t.Fatal("comparison cannot distinguish unmasked text")
 	}
 }
