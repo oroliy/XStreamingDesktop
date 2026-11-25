@@ -103,7 +103,7 @@ func TestFeedbackUsesStreamingSlotAndStopsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	ready := make(chan struct{})
 	close(ready)
-	feedback := make(chan vibrationMessage, 1)
+	feedback := newVibrationMailbox()
 	calls := make(chan motorCall, 3)
 	pad := new(gamepad.Pad)
 	sender := &feedbackTestSender{added: make(chan uint8, 1)}
@@ -119,14 +119,14 @@ func TestFeedbackUsesStreamingSlotAndStopsOnCancel(t *testing.T) {
 		cancel()
 		t.Fatal("pad was not announced")
 	}
-	feedback <- vibrationMessage{value: protocol.Vibration{Index: 0, LeftMotor: 1, Duration: time.Millisecond}, received: time.Now().Add(-time.Second)}
+	feedback.offer(vibrationMessage{value: protocol.Vibration{Index: 0, LeftMotor: 1, Duration: time.Millisecond}, received: time.Now().Add(-time.Second)})
 	select {
 	case call := <-calls:
 		cancel()
 		t.Fatalf("expired feedback activated motors: %+v", call)
 	case <-time.After(30 * time.Millisecond):
 	}
-	feedback <- vibrationMessage{value: protocol.Vibration{Index: 0, LeftMotor: 0.8, RightMotor: 0.3, Duration: time.Second}, received: time.Now()}
+	feedback.offer(vibrationMessage{value: protocol.Vibration{Index: 0, LeftMotor: 0.8, RightMotor: 0.3, Duration: time.Second}, received: time.Now()})
 	select {
 	case call := <-calls:
 		if call.pad != pad || call.left != 0.8 || call.right != 0.3 {
@@ -164,7 +164,7 @@ func TestClosedInputStopsVibration(t *testing.T) {
 	defer cancel()
 	ready := make(chan struct{})
 	close(ready)
-	feedback := make(chan vibrationMessage, 2)
+	feedback := newVibrationMailbox()
 	calls := make(chan motorCall, 4)
 	pad := new(gamepad.Pad)
 	sender := &feedbackTestSender{added: make(chan uint8, 1)}
@@ -180,7 +180,7 @@ func TestClosedInputStopsVibration(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("pad was not announced")
 	}
-	feedback <- vibrationMessage{value: protocol.Vibration{Index: 0, LeftMotor: 1, Duration: time.Second}, received: time.Now()}
+	feedback.offer(vibrationMessage{value: protocol.Vibration{Index: 0, LeftMotor: 1, Duration: time.Second}, received: time.Now()})
 	select {
 	case <-calls:
 	case <-time.After(time.Second):
@@ -195,7 +195,7 @@ func TestClosedInputStopsVibration(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("closed channel did not stop motors")
 	}
-	feedback <- vibrationMessage{value: protocol.Vibration{Index: 0, LeftMotor: 1, Duration: time.Second}, received: time.Now()}
+	feedback.offer(vibrationMessage{value: protocol.Vibration{Index: 0, LeftMotor: 1, Duration: time.Second}, received: time.Now()})
 	select {
 	case call := <-calls:
 		t.Fatalf("closed channel restarted motors: %+v", call)
@@ -204,5 +204,27 @@ func TestClosedInputStopsVibration(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestVibrationMailboxKeepsLatestPerController(t *testing.T) {
+	m := newVibrationMailbox()
+	for i := 0; i < 1000; i++ {
+		m.offer(vibrationMessage{value: protocol.Vibration{Index: 0, LeftMotor: 1}, received: time.Now()})
+	}
+	m.offer(vibrationMessage{value: protocol.Vibration{Index: 1, RightMotor: 0.5}, received: time.Now()})
+	m.offer(vibrationMessage{value: protocol.Vibration{Index: 0}, received: time.Now()})
+	m.offer(vibrationMessage{value: protocol.Vibration{Index: 9, LeftMotor: 1}, received: time.Now()})
+	select {
+	case <-m.ready:
+	default:
+		t.Fatal("missing notification")
+	}
+	got := m.take()
+	if len(got) != 2 || got[0].value.Index != 0 || got[0].value.LeftMotor != 0 || got[1].value.Index != 1 || got[1].value.RightMotor != 0.5 {
+		t.Fatalf("latest feedback lost: %+v", got)
+	}
+	if len(m.take()) != 0 {
+		t.Fatal("mailbox did not clear")
 	}
 }

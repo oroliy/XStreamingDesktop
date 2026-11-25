@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo/plugins/game/gamepad"
@@ -57,21 +58,52 @@ type vibrationMessage struct {
 	received time.Time
 }
 
-func vibrationFeedback(channel *webrtc.DataChannel, enabled bool) <-chan vibrationMessage {
+type vibrationMailbox struct {
+	mu      sync.Mutex
+	ready   chan struct{}
+	pending [4]*vibrationMessage
+}
+
+func newVibrationMailbox() *vibrationMailbox { return &vibrationMailbox{ready: make(chan struct{}, 1)} }
+
+func (m *vibrationMailbox) offer(message vibrationMessage) {
+	if message.value.Index >= uint8(len(m.pending)) {
+		return
+	}
+	m.mu.Lock()
+	m.pending[message.value.Index] = &message
+	m.mu.Unlock()
+	select {
+	case m.ready <- struct{}{}:
+	default:
+	}
+}
+
+func (m *vibrationMailbox) take() []vibrationMessage {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var messages []vibrationMessage
+	for i, item := range m.pending {
+		if item != nil {
+			messages = append(messages, *item)
+			m.pending[i] = nil
+		}
+	}
+	return messages
+}
+
+func vibrationFeedback(channel *webrtc.DataChannel, enabled bool) *vibrationMailbox {
 	if !enabled {
 		return nil
 	}
-	feedback := make(chan vibrationMessage, 64)
+	feedback := newVibrationMailbox()
 	channel.OnMessage(func(msg webrtc.DataChannelMessage) {
 		if msg.IsString {
 			return
 		}
 		v, err := protocol.ParseVibration(msg.Data)
 		if err == nil {
-			select {
-			case feedback <- vibrationMessage{value: v, received: time.Now()}:
-			default:
-			}
+			feedback.offer(vibrationMessage{value: v, received: time.Now()})
 		}
 	})
 	return feedback
@@ -91,7 +123,7 @@ func run(ctx context.Context, sender inputSender, channel inputChannel, ready <-
 	return runWithFeedback(ctx, sender, channel, ready, keyboard, deadzone, pollingRate, pads, onError, onRecovery, nil, nil)
 }
 
-func runWithFeedback(ctx context.Context, sender inputSender, channel inputChannel, ready <-chan struct{}, keyboard *Keyboard, deadzone float64, pollingRate int, pads func() []*gamepad.Pad, onError func(error), onRecovery func(), feedback <-chan vibrationMessage, setMotor func(*gamepad.Pad, float64, float64)) error {
+func runWithFeedback(ctx context.Context, sender inputSender, channel inputChannel, ready <-chan struct{}, keyboard *Keyboard, deadzone float64, pollingRate int, pads func() []*gamepad.Pad, onError func(error), onRecovery func(), feedback *vibrationMailbox, setMotor func(*gamepad.Pad, float64, float64)) error {
 	select {
 	case <-ctx.Done():
 		return nil
@@ -106,6 +138,10 @@ func runWithFeedback(ctx context.Context, sender inputSender, channel inputChann
 	slots := slotTracker{}
 	rumble := newRumbleManager(setMotor)
 	defer rumble.close()
+	var feedbackReady <-chan struct{}
+	if feedback != nil {
+		feedbackReady = feedback.ready
+	}
 	failed := false
 	transitionDelayed := false
 	report := func(err error) {
@@ -139,21 +175,24 @@ func runWithFeedback(ctx context.Context, sender inputSender, channel inputChann
 		select {
 		case <-ctx.Done():
 			return nil
-		case message := <-feedback:
+		case <-feedbackReady:
 			if channel.ReadyState() != webrtc.DataChannelStateOpen {
+				feedback.take()
 				continue
 			}
-			v := message.value
-			if v.Duration > 0 {
-				v.Duration -= time.Since(message.received)
-				if v.Duration <= 0 {
-					continue
+			for _, message := range feedback.take() {
+				v := message.value
+				if v.Duration > 0 {
+					v.Duration -= time.Since(message.received)
+					if v.Duration <= 0 {
+						continue
+					}
 				}
-			}
-			for pad, index := range slots.pads {
-				if index == v.Index {
-					rumble.play(v.Index, pad, v)
-					break
+				for pad, index := range slots.pads {
+					if index == v.Index {
+						rumble.play(v.Index, pad, v)
+						break
+					}
 				}
 			}
 		case <-ticker.C:
