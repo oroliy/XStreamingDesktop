@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/oroliy/XStreamingDesktop/go-client/peer"
@@ -160,7 +161,11 @@ func TestSystemPromptsAreQueuedAndRestoreKeyboard(t *testing.T) {
 		t.Fatal(err)
 	}
 	p1.streamCtx, p2.streamCtx = ctx, ctx
+	a.keyboard.PressNexus(time.Minute)
 	a.enqueueSystemPrompt(p1)
+	if active, _ := a.keyboard.Snapshot(); active {
+		t.Fatal("system prompt left the Xbox button pressed")
+	}
 	a.enqueueSystemPrompt(p2)
 	if a.systemPrompt != p1 || len(a.systemQueue) != 1 || a.keyboardEnabled {
 		t.Fatal("prompts not queued")

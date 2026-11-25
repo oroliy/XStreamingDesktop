@@ -243,6 +243,7 @@ func (a *app) showNextSystemPrompt() {
 		p.restoreKeyboard = a.keyboardEnabled
 		a.keyboardEnabled = false
 		a.keyboard.Set(false, protocol.Gamepad{})
+		a.keyboard.ClearNexus()
 		a.systemPrompt = p
 	}
 }
